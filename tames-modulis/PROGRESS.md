@@ -2,12 +2,47 @@
 
 ## 🔜 NĀKAMAIS UZDEVUMS
 
-Sesija 4 — Izmaiņu vadības dzinējs (`diffBoq(baseline, revised)`). Skat.
-`TAMES_MODULE_SPEC.md` §3, Sesija 4. Saskaņo rindas pēc koda+apraksta (fuzzy,
-`normalizeCostRef`/`looseCostRefKey` loģikas analogs no Kanban app, skat.
-`ARCHITECTURE_EXPORT.md` §5), klasificē `unchanged`/`quantity_changed`/`added`/`removed`,
-staged-review plūsma pirms commit. Nesākt bez lietotāja apstiprinājuma, ka uzdevums joprojām
-aktuāls.
+Sesija 5 — Glabāšana un versionēšana. Skat. `TAMES_MODULE_SPEC.md` §3, Sesija 5: lēmums un
+implementācija — sākumā vienkārši JSON faili (`data/projects/<projectId>/boq-state.json`),
+IndexedDB atliekam līdz brauzera UI reāli tiek būvēts (Sesija 7+). Definition of Done: save/load
+round-trip testēts; shēmas versijas migrācijas stubs gatavs (pat ja vēl tikai `v1`). Nesākt bez
+lietotāja apstiprinājuma, ka uzdevums joprojām aktuāls.
+
+---
+
+## 🗓 SESIJA 4 — 2026-07-31 — Izmaiņu vadības dzinējs
+
+**Kas darīts:**
+- `src/diff/costRef.js` — `normalizeCostRef`/`looseCostRefKey`, tieši pārmantoti no Kanban app
+  CCF/VO moduļa (skat. `ARCHITECTURE_EXPORT.md` §5), lai vēlākā savienošana nebūtu jāpārrēķina.
+- `src/diff/diffBoq.js` — `diffBoq(baselineItems, revisedItems)`: saskaņo rindas divos soļos
+  (precīzs atslēgas sakritums, tad fuzzy sakritums TIKAI atlikušajam), klasificē katru pāri/
+  nesaskaņoto rindu kā `unchanged` / `quantity_changed` / `added` / `removed`.
+- `src/diff/stagedReview.js` — `createStagedReview()` / `approveEntry()` / `rejectEntry()` /
+  `commitStagedReview()` — Kanban app `piStaged*` staged-edit parauga analogs: diff tikai
+  ierosina, commit pielieto TIKAI apstiprinātos ierakstus.
+
+**Kāpēc (arhitektūras lēmumi):**
+- Saskaņošanas atslēga BOQ pozīcijas līmenī praksē vienmēr ir `descriptionRaw` (normalizēts),
+  nevis `code` — jo `code` lauks pozīciju līmenī gandrīz vienmēr tukšs (apstiprināts abu
+  paraugfailu reālajos datos, skat. §2 komentāru "bieži tukšs"). `itemKey()` tomēr prioritizē
+  `code`, ja tas IR aizpildīts, saglabājot pareizību gadījumiem, kur tas parādīsies.
+- Fuzzy sakritums TIKAI pēc precīzā sakrituma atlikumam (nevis vienlaicīgi abi visiem
+  pāriem) — novērš situāciju, kur fuzzy atslēga nejauši "nozog" pāri no pareizā precīzā
+  sakrituma citai rindai.
+- Staged-review komandas (`approveEntry`/`commitStagedReview`) nemaina ievaddatus vietā —
+  atgriež jaunus masīvus/objektus (funkcionāls stils), lai bāzes stāvoklis paliktu
+  neskarts, kamēr izsaucējs (vēlāk — UI) pats lemj, kad commitot.
+
+**Verifikācija:**
+- `node --test`: **14/14 testi PASS** (`test/diffBoq.test.js` + visi iepriekšējo sesiju testi).
+- Sintētiska "revidēta" C2-10 `1-2Pp` kopija (reāli ekstrahēta bāze + 4 mutācijas) pareizi
+  klasificē VISAS 4 spec §3 Sesija 4 prasītās kategorijas VIENĀ diff izsaukumā, PLUS
+  fuzzy-match gadījumu (apraksta pieturzīmju drifts — ARCHITECTURE_EXPORT.md §5 "1.2"/"1.2."
+  precedents) — saskaņots kā `unchanged` ar `matchConfidence:'fuzzy'`, NEVIS sadalīts
+  removed+added pārī.
+- Staged-review plūsma pierādīta: apstiprinot TIKAI vienu ierakstu, pārējās (removed/added)
+  izmaiņas NETIEK pielietotas commit rezultātā; apstiprinot visus — pielietojas visas.
 
 ---
 

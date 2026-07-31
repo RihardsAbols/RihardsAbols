@@ -62,8 +62,19 @@ formulu dzinējā (`src/parser/formulaEngine.js` + `workbookModel.js`):
 ## Sesijas protokols
 Skat. `TAMES_MODULE_SPEC.md` §4 — obligāts katras sesijas beigās.
 
+## Izmaiņu vadība: `src/diff/diffBoq.js` + `src/diff/stagedReview.js` (Sesija 4)
+- Saskaņošanas atslēga = `code` (ja aizpildīts) citādi `descriptionRaw`, normalizēta ar
+  `normalizeCostRef`/`looseCostRefKey` (`src/diff/costRef.js` — tieši tā pati loģika, kas
+  pierādīta Kanban app CCF/VO modulī, skat. `ARCHITECTURE_EXPORT.md` §5).
+- Divu soļu saskaņošana: 1) precīzs atslēgas sakritums; 2) TIKAI atlikušajam — fuzzy (loose)
+  sakritums, atzīmēts ar `matchConfidence: 'fuzzy'`. Fuzzy sakritumi netiek klusi apvienoti bez
+  atzīmes — atbilst Kanban app precedentam ("❓ Līdzīgs kods", vienmēr lietotāja apstiprināts).
+- `stagedReview.js` — Kanban app `piStaged*` parauga analogs: `createStagedReview()` tikai
+  IEROSINA izmaiņas; `commitStagedReview()` pielieto TIKAI ierakstus ar `approved:true`.
+  Neapstiprinātas `removed`/`added` izmaiņas vienkārši netiek pielietotas (nekad klusi).
+
 ## Nākamais solis
-Sesija 4 — Izmaiņu vadības dzinējs: `diffBoq(baseline, revised)`. Skat.
-`TAMES_MODULE_SPEC.md` §3, Sesija 4, "Gatavs, kad" kritērijs (sintētiska "revidēta" C2-10 kopija,
-diff pret bāzi klasificē `unchanged`/`quantity_changed`/`added`/`removed`; staged-review plūsma
-pirms commit). Nesākt bez lietotāja apstiprinājuma, ka šis solis joprojām aktuāls.
+Sesija 5 — Glabāšana un versionēšana: sākumā vienkārši JSON faili
+(`data/projects/<projectId>/boq-state.json`), shēmas versijas migrācijas stubs (pat ja tikai
+`v1`). Skat. `TAMES_MODULE_SPEC.md` §3, Sesija 5, "Gatavs, kad" kritērijs (save/load round-trip
+testēts). Nesākt bez lietotāja apstiprinājuma, ka šis solis joprojām aktuāls.
