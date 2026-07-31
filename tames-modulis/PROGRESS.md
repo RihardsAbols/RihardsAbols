@@ -469,20 +469,36 @@ prioritāte šajā projektā (skat. arī `exceljs` code-splitting lēmumu).
   UI "+"): summas pareizas, nav negribētas ritjoslas (`scrollHeight <=
   clientHeight`), UX vizuāli nemainīgs salīdzinājumā ar iepriekšējo sesiju.
 
+**Apstiprināts arī ar to pašu reālo Sesijas 12 failu** (lietotājs to
+pievienoja pēc sākotnējā labojuma) — tiešs pirms/pēc salīdzinājums tajā
+pašā vidē, izmantojot `git worktree` uz `0adae4d` (commit tieši pirms šī
+labojuma) blakus pašreizējam kodam, abus palaižot ar `vite preview`:
+
+| | Pirms (0adae4d) | Pēc (šis labojums) |
+|---|---|---|
+| Imports + render | 18.3s | 6.0s (~3.0x ātrāk) |
+| `<input>` DOM mezgli | 90132 | 9268 |
+| KOPĀ AR PVN | 116003891.89 € | 116003891.89 € (identisks) |
+
+Identiskā kopsumma abās versijās apstiprina, ka virtualizācija nemaina
+importēto/aprēķināto datu pareizību, tikai renderēšanu. Reālā faila
+paātrinājums (~3.0x) ir nedaudz mazāks nekā sintētiskajam fixture
+(~5.4x) — ticamākais iemesls: reālā faila garāki/dažādāki teksta lauki un
+pati `exceljs` parsēšana (kas nav skarta šajā labojumā) aizņem lielāku daļu
+no kopējā laika nekā sintētiskajā testā ar vienkāršotiem datiem.
+
 **Definition of Done — pārbaudīts:**
 - ✅ Core: visi 39 testi joprojām zaļi (izmaiņas bija tikai `packages/web`
   pusē, core netika skarts).
 - ✅ Typecheck tīrs abās pakotnēs.
 - ✅ `vite build` veiksmīgs, bundle izmēri nemainīgi (virtualizācija ir
   tikai izmaiņa render loģikā, ne jauna atkarība).
-- ✅ Veiktspējas uzlabojums pierādīts ar konkrētiem skaitļiem (17.0s ->
-  3.1s, 90146 -> ~10199 DOM mezgli), ne tikai apgalvots.
+- ✅ Veiktspējas uzlabojums pierādīts ar konkrētiem skaitļiem gan
+  sintētiskam (17.0s -> 3.1s), gan **reālam Sesijas 12 failam** (18.3s ->
+  6.0s), tiešā pirms/pēc salīdzinājumā tajā pašā vidē.
 - ✅ Pareizība pēc virtualizācijas manuāli pārbaudīta (indeksācija,
-  noturība pret ritināšanu, dzīvais kopsavilkums), ne tikai ātrums.
-- ⚠️ **Nav pabeigts/zināms trūkums:** pārbaudīts ar sintētisku fixture, ne
-  ar to pašu reālo 53-lapu failu, kas bija pieejams Sesijā 12 (fails nebija
-  pieejams šajā sesijā) — struktūra identiska (sadaļu/pozīciju skaits), bet
-  vērts būtu apstiprināt arī ar reālo failu, ja tas atkal kļūst pieejams.
+  noturība pret ritināšanu, dzīvais kopsavilkums, identiska kopsumma
+  pirms/pēc ar reālo failu), ne tikai ātrums.
 - ⚠️ IndexedDB saglabāšanas laiks (~6.5s Sesijā 12) netika atsevišķi mērīts
   šajā sesijā — šis labojums risina tikai render pusi, nevis saglabāšanu.
 
