@@ -1,0 +1,17 @@
+{
+  "name": "tames-modulis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tāmju/BOQ modulis - datu modelis, glabāšana un versionēšana",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-vm-modules node_modules/.bin/vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "@types/node": "^22.5.0"
+  }
+}
