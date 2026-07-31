@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { createEmptyBoqState, type BoqState } from "../models/boq.js";
 import type { ProjectListEntry, StorageAdapter } from "../storage/StorageAdapter.js";
 
@@ -10,7 +9,9 @@ export class ProjectNotFoundError extends Error {
 }
 
 export async function createProject(adapter: StorageAdapter, projectName: string): Promise<BoqState> {
-  const projectId = randomUUID();
+  // globalThis.crypto (Web Crypto) rather than node:crypto's randomUUID, so
+  // this module stays bundleable for the browser (packages/web) as well as Node.
+  const projectId = crypto.randomUUID();
   const state = createEmptyBoqState(projectId, projectName);
   await adapter.save(projectId, state);
   return state;

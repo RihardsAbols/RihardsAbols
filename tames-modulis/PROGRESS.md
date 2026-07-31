@@ -178,19 +178,88 @@ in-memory adapteri, neatkarīgi no faila sistēmas.
   5 excel + 7 ProjectService).
 - ✅ Typecheck tīrs (`npx tsc --noEmit`).
 
+## Sesija 9: Brauzera UI un IndexedDB adapteris — ✅ pabeigts
+
+**Uzdevums:** brauzera UI un IndexedDB adapteris (apstiprināts ar lietotāju
+kā pilns CRUD UI, ar React + Vite pēc manas rekomendācijas).
+
+**Lēmums:** pārstrukturēts uz npm workspace ar divām pakotnēm —
+`packages/core` (esošā bibliotēka, pārvietota nemainot loģiku) un
+`packages/web` (jauns React + Vite UI). Tas bija nepieciešams, jo
+`packages/web` tieši importē `@tames-modulis/core`, un vairākas esošās
+vietas kodā izmantoja Node-only API (`node:fs`, `node:crypto`), kas
+salauztu brauzera build. Risinājums:
+- `FileSystemStorageAdapter` izņemts no universālā `src/index.ts` barela,
+  pieejams tikai caur jaunu `@tames-modulis/core/node` (`src/node.ts`) ieejas
+  punktu.
+- `randomUUID()` no `node:crypto` (`ProjectService.ts`, `excel/import.ts`)
+  aizstāts ar globālo `crypto.randomUUID()` (Web Crypto API, pieejams arī
+  Node 19+) — vienāds kods strādā abur.
+- `exportBoqToBuffer`/`importBoqFromBuffer` pārtaisīti no Node `Buffer` uz
+  `ArrayBuffer`, jo `Buffer` globāls neeksistē brauzerī bez polyfill.
+
+**Implementēts:**
+- `packages/web/src/storage/IndexedDbStorageAdapter.ts` — `StorageAdapter`
+  ar IndexedDB (viens object store `projects`, keyPath `projectId`,
+  vērtība = pilns `BoqState`; `load`/`list` izlaiž datus caur
+  `migrateToCurrent`, tāpat kā failu adapteris).
+- `packages/web/src/components/ProjectList.tsx` — projektu saraksts,
+  izveides forma, dzēšana ar apstiprinājumu.
+- `packages/web/src/components/ProjectEditor.tsx` — pilna rediģēšana:
+  projekta nosaukums, virsizdevumu/peļņas/PVN likmes, sadaļu un pozīciju
+  pievienošana/rediģēšana/dzēšana, dzīvs kopsavilkums (`summarizeBoq`
+  pārrēķināts katrā renderā), "Saglabāt" (IndexedDB) un "Eksportēt Excel"
+  poga (lejupielādē `.xlsx` caur `exportBoqToBuffer` + `Blob`).
+- `packages/web/src/App.tsx` — savieno sarakstu un redaktoru.
+
+**Manuāla pārbaude (Playwright + reāls Chromium, ne tikai unit testi):**
+pilns lietotāja ceļš pārbaudīts galīgajā (production) un dev buildā:
+projekta izveide -> sadaļas/pozīcijas pievienošana -> dzīvais kopsavilkums
+pareizs (1000€ tiešās, 120€ virsizdevumi, 50€ peļņa, 1170€ pavisam,
+245.70€ PVN, 1415.70€ kopā — sakrīt ar roku rēķinātu) -> Saglabāt ->
+lapas pārlāde -> dati saglabājušies IndexedDB -> Eksportēt Excel lejupielādē
+derīgu `.xlsx` (pārbaudīts ar `openpyxl`, satura vērtības sakrīt) ->
+projekta dzēšana strādā.
+
+**Atrasts un izlabots reāls kļūme, ne tikai tests:** eksportējot ar
+diakritiku saturošu projekta nosaukumu (piem. "Testa māja"), Chromium
+`download` atribūta failanosaukums krīt atpakaļ uz ģenērisku "download" —
+apstiprināts ar izolētu reprodukciju (identisks kods ar ASCII nosaukumu
+strādā pareizi, ar diakritiku nē), tātad reāla problēma, ne testa vides
+artefakts. Latviešu valodas projektu nosaukumi gandrīz vienmēr satur
+diakritiku, tāpēc tas skartu ikvienu reālu lietotāju. Izlabots ar
+`toAsciiFileName()` — faila nosaukums tiek attīrīts, saturs paliek
+neskarts.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: visi testi zaļi (`npm test --workspace @tames-modulis/core` —
+  31/31), typecheck tīrs.
+- ✅ Web: typecheck tīrs, `vite build` veiksmīgs (ar izmēra brīdinājumu,
+  skat. zemāk), pilns lietotāja ceļš manuāli pārbaudīts ar Playwright reālā
+  Chromium (ne tikai statisks build).
+- ⚠️ **Nav pabeigts/zināms trūkums:** `vite build` brīdina, ka galvenais JS
+  bundle ir ~1.1MB (322KB gzip) — galvenokārt `exceljs`. Darbojas pareizi,
+  bet nav optimizēts; vērts vēlāk code-split'ot (dinamisks `import()`
+  Excel eksportam/importam), lai sākotnējā lapas ielāde nebūtu smaga tikai
+  tāpēc, ka pastāv Excel eksporta poga.
+- ⚠️ Nav pievienots favicon (nekritiski, 404 konsolē).
+- ⚠️ Nav testēts, kā UI uzvedas ar ļoti daudzām sadaļām/pozīcijām
+  (veiktspēja, ritināšana) — pārbaudīts tikai ar mazu paraugu.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
+1. **`exceljs` bundle izmēra optimizācija** — dinamisks imports Excel
+   eksporta/importa kodam, lai sākotnējā UI ielāde nebūtu ~1MB smaga.
+2. **Excel imports UI** — pašlaik UI ir tikai eksporta poga; ja vajag arī
+   importēt `.xlsx` failu no brauzera (fails jau ir `importBoqFromBuffer`
+   `core` pusē, vienkārši nav savienots ar UI).
+3. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
    fails, importēt to un salīdzināt rezultātu, lai apstiprinātu, ka
-   `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt ar reālo formātu
-   (pašlaik pārbaudīts tikai pret SKILL.md dokumentāciju, ne pret reālu failu).
-2. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
+   `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt ar reālo formātu.
+4. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
-3. **Brauzera UI un IndexedDB adapteris** (Sesija 7+ plānā minētais) —
-   tagad, kad ir gan datu modelis, gan aprēķini, gan CRUD, iespējams, ir
-   pienācis laiks sākt UI.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 import { createEmptyBoqState, type BoqItem, type BoqSection, type BoqState } from "../models/boq.js";
 import { cellNumber, cellText } from "./cellValue.js";
@@ -38,7 +37,7 @@ export function importBoqFromWorkbook(
       }
 
       items.push({
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         code: cellText(row.getCell(TAME_COLUMNS.nrPk)).trim(),
         description: cellText(row.getCell(TAME_COLUMNS.name)).trim(),
         unit: unitText,
@@ -61,15 +60,18 @@ export function importBoqFromWorkbook(
   return state;
 }
 
+/**
+ * Takes ArrayBuffer rather than Node's Buffer so this module works unchanged
+ * in a browser bundle - a Node Buffer (from fs.readFile) or a browser
+ * ArrayBuffer (from File.arrayBuffer()) both work here, since Buffer is a
+ * Uint8Array/ArrayBuffer-backed view either way.
+ */
 export async function importBoqFromBuffer(
-  buffer: Buffer,
+  buffer: ArrayBuffer,
   projectId: string,
   projectName: string,
 ): Promise<BoqState> {
   const workbook = new ExcelJS.Workbook();
-  // exceljs's .d.ts declares its own module-local `Buffer extends ArrayBuffer`,
-  // which shadows Node's Buffer and makes a real Buffer fail the type check
-  // even though it's exactly what the library expects and handles at runtime.
-  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+  await workbook.xlsx.load(buffer);
   return importBoqFromWorkbook(workbook, projectId, projectName);
 }

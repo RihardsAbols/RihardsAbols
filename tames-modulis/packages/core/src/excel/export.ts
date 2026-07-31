@@ -245,8 +245,16 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   return workbook;
 }
 
-export async function exportBoqToBuffer(state: BoqState): Promise<Buffer> {
+/**
+ * Returns an ArrayBuffer rather than Node's Buffer, so this module has no
+ * dependency on Node globals and works unchanged in a browser bundle (e.g.
+ * packages/web). exceljs's .d.ts return type here is its own module-local
+ * `Buffer extends ArrayBuffer` (see import.ts for the same quirk) - the real
+ * runtime value is a Node Buffer in Node and a Uint8Array/ArrayBuffer in a
+ * browser bundle; both work as ArrayBuffer-like data for callers (wrap in
+ * Buffer.from() on the Node side, or new Blob([...]) in the browser).
+ */
+export async function exportBoqToBuffer(state: BoqState): Promise<ArrayBuffer> {
   const workbook = exportBoqToWorkbook(state);
-  const arrayBuffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(arrayBuffer);
+  return workbook.xlsx.writeBuffer() as unknown as Promise<ArrayBuffer>;
 }

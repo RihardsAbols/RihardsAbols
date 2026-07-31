@@ -7,7 +7,10 @@ export {
   DEFAULT_PROFIT_RATE,
 } from "./models/boq.js";
 export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";
-export { FileSystemStorageAdapter } from "./storage/adapters/FileSystemStorageAdapter.js";
+// FileSystemStorageAdapter is intentionally NOT re-exported here: it imports
+// node:fs/promises, and this barrel must stay bundleable for the browser
+// (packages/web imports it directly). Node-side code should import it from
+// "@tames-modulis/core/node" instead (see src/node.ts).
 export { migrateToCurrent, UnsupportedSchemaVersionError } from "./storage/migrations/index.js";
 export {
   createProject,

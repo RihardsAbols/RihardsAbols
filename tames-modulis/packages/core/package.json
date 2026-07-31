@@ -1,0 +1,26 @@
+{
+  "name": "@tames-modulis/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tāmju/BOQ modulis - datu modelis, glabāšana un versionēšana",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "@types/node": "^22.5.0"
+  }
+}
