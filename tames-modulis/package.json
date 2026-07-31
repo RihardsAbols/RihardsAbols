@@ -1,0 +1,13 @@
+{
+  "name": "tames-modulis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Detalizētu būvdarbu tāmju (BOQ) parsēšanas un izmaiņu vadības modulis.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}
