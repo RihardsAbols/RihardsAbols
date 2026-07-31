@@ -2,12 +2,61 @@
 
 ## 🔜 NĀKAMAIS UZDEVUMS
 
-Sesija 3 — Rindu ekstrakcija un kanoniskais modelis (`src/parser/extractLineItems.js`). Skat.
-`TAMES_MODULE_SPEC.md` §3, Sesija 3. **Vispirms jāizlemj**: kā risināt novecojušas/nulles
-formulu cached-values abos paraugfailos (skat. `CLAUDE.md` "Excel bibliotēkas" sadaļu un šīs
-sesijas ierakstu zemāk) — LibreOffice recalc, ko spec §1 pieņēma kā doto, vismaz vienam
-paraugfailam (`.xls`) neizdodas tieši konvertēt/atvērt. Nesākt bez lietotāja apstiprinājuma, ka
-uzdevums joprojām aktuāls.
+Sesija 4 — Izmaiņu vadības dzinējs (`diffBoq(baseline, revised)`). Skat.
+`TAMES_MODULE_SPEC.md` §3, Sesija 4. Saskaņo rindas pēc koda+apraksta (fuzzy,
+`normalizeCostRef`/`looseCostRefKey` loģikas analogs no Kanban app, skat.
+`ARCHITECTURE_EXPORT.md` §5), klasificē `unchanged`/`quantity_changed`/`added`/`removed`,
+staged-review plūsma pirms commit. Nesākt bez lietotāja apstiprinājuma, ka uzdevums joprojām
+aktuāls.
+
+---
+
+## 🗓 SESIJA 3 — 2026-07-31 — Rindu ekstrakcija un kanoniskais modelis
+
+**Kas darīts:**
+- `src/parser/cellRef.js` — šūnu adrešu parsēšana/formatēšana (kolonnu burti ↔ skaitļi) un
+  `shiftFormulaReferences()` relatīvo atsauču pārbīdei (shared formula tulkošanai).
+- `src/parser/formulaEngine.js` — minimāls Excel formulu tokenizētājs/parseris/izpildītājs
+  (nevis vispārīgs dzinējs — tikai reāli novērotais vārdu krājums: `+-*/^%=`, `SUM`, `ROUND`,
+  `IF`, `COUNTA`, `COUNTBLANK`, šūnu/diapazonu/lapu atsauces).
+- `src/parser/workbookModel.js` — būvē "jēlo" formulu modeli (exceljs `.xlsx` / SheetJS `.xls`),
+  iztulko shared-formula atkarīgās šūnas uz pilnu formulas virkni, un `loadRecalculatedWorkbook()`
+  atgriež `getValue(sheet, address)`, kas VISU formulu vērtības ATVASINA pēc pieprasījuma
+  (memoizēts, ar ciklisku atsauču noteikšanu) — NEVIENA vērtība nav uzticēta bibliotēkas cache.
+- `src/parser/extractLineItems.js` — `extractSheetLineItems()` (viena DETAIL lapa → §2 "BOQ
+  rinda" kanoniskais modelis, no galvenes līdz kopsummas rindai) un `extractAllDetailSheets()`
+  (ērtības funkcija — ielādē darbgrāmatu VIENU reizi, ekstrahē visas DETAIL lapas).
+
+**Svarīgs atradums — kāpēc formulu vērtības šķita "novecojušas/nulle" (izrēķināts Sesijā 3, ne
+Sesijā 2)**: pierādīts ar xlsx XML tiešu inspekciju, ka avotfailā PATIESĪBĀ IR cache-otas
+`<v>` vērtības (piem. `KO!D24`: `<f>KS!D21</f><v>0</v>`), bet `exceljs` tās PAZAUDĒ savas
+parsēšanas laikā tieši formulām ar funkcijām/starplapu atsaucēm (atgriež `{formula:"..."}`
+bez `result`) — tikai "shared formula" grupas dabū `result` uzticami. Tas ir `exceljs`
+ierobežojums, ne avotfaila datu kvalitātes problēma. Pēc lietotāja apstiprinājuma ("pārrēķini
+pašā Node kodā") uzbūvēts pilnīgi patstāvīgs formulu pārrēķina dzinējs — sk. `CLAUDE.md`.
+
+**Kāpēc (arhitektūras lēmumi):**
+- Formulu dzinējs apzināti ierobežots līdz REĀLI NOVĒROTAJAM vārdu krājumam abos paraugfailos
+  (pārbaudīts ar pilnu formulu skenēšanu — 6045 formulu šūnas C2-10, 278 C8-2), nevis būvēts kā
+  vispārīgs Excel emulators — atbilst spec §1 "tīras, testējamas funkcijas", nevis
+  pāri-inženierēts risinājums hipotētiskiem gadījumiem.
+- Rindas identificēšana par "BOQ pozīciju" (nevis sadaļas virsrakstu vai veidnes artefaktu)
+  balstās uz DIVIEM kritērijiem — ir daudzums UN apraksts ir teksts (ne kails skaitlis). Otrais
+  kritērijs bija nepieciešams, jo šī tāmju veidnes ģimene liek papildu "kolonnu indeksu" rindu
+  (1,2,3,4...) tieši aiz galvenes rindas (piem. `1-2Pp!12. rinda`), kas citādi nepareizi tiktu
+  atpazīta par pirmo BOQ pozīciju (jo tai IR skaitliska "daudzuma" vērtība kolonnā 5).
+- `extractAllDetailSheets()` pievienota pēc veiktspējas problēmas atklāšanas testos (69 lapu
+  faila ekstrakcija ar VIENU parsēšanu uz lapu aizņēma ~109s, jo katrs izsaukums no jauna lasīja
+  visu 1.1 MB failu) — ar koplietotu darbgrāmatas ielādi tas paātrinājās līdz ~6s.
+
+**Verifikācija:**
+- `node --test`: **12/12 testi PASS** (`test/extractLineItems.test.js` + Sesijas 2 testi).
+- Punktpārbaude pret ZINĀMU, NOZĪMĪGU (ne tikai nulles) kopsummu: C8-2 `1.2 Substructure`
+  ekstrahēto rindu `totalCost.totalCents` summa = `2453969` = `Kops.1!F20` neatkarīgi
+  pārrēķinātā vērtība (arī = Excel oriģinālā vērtība). C2-10 (bāzes tāme bez cenām) korekti
+  dod `0` visur — atbilst spec §0 aprakstītajai faila dabai.
+- Visas abu paraugfailu DETAIL lapas (69 no 72 kopā) ekstrahējas bez kļūdām
+  (`extractAllDetailSheets`, smoke tests).
 
 ---
 
