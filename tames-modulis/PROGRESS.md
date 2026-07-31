@@ -487,6 +487,24 @@ paātrinājums (~3.0x) ir nedaudz mazāks nekā sintētiskajam fixture
 pati `exceljs` parsēšana (kas nav skarta šajā labojumā) aizņem lielāku daļu
 no kopējā laika nekā sintētiskajā testā ar vienkāršotiem datiem.
 
+**Papildu atklājums: virtualizācija paātrina arī "Saglabāt" un lapas
+pārlādi, nevis tikai importu.** Sesijā 12 minētais ~6.5s "saglabāšanas"
+laiks tika pārpratīts kā IndexedDB raksta izmaksa pati par sevi — patiesībā
+lielāko daļu tā laika aizņēma React re-renderis pēc `setState` (handleSave
+un lapas ielādes gadījumā abos tiek uzstādīts pilns `BoqState`, kas pirms
+labojuma nozīmēja visu ~90k input mezglu pārbūvi no jauna). Izmērīts ar to
+pašu reālo failu, to pašu pirms/pēc `git worktree` metodi:
+
+| | Pirms (0adae4d) | Pēc (šis labojums) |
+|---|---|---|
+| "Saglabāt" (IndexedDB raksts + re-render) | 3.4s | 0.4s (~8.7x ātrāk) |
+| Lapas pārlāde + projekta atvēršana | 6.4s | 1.3s (~4.8x ātrāk) |
+
+Tas nozīmē, ka pats IndexedDB raksta/nolasīšanas laiks reālam ~13k pozīciju
+projektam ir zem sekundes — iepriekš atzīmētais "IndexedDB saglabāšanas
+ātruma" trūkums (skat. zemāk NĀKAMAIS UZDEVUMS) faktiski jau ir atrisināts
+ar šo pašu labojumu, nevis prasa atsevišķu risinājumu.
+
 **Definition of Done — pārbaudīts:**
 - ✅ Core: visi 39 testi joprojām zaļi (izmaiņas bija tikai `packages/web`
   pusē, core netika skarts).
@@ -499,8 +517,9 @@ no kopējā laika nekā sintētiskajā testā ar vienkāršotiem datiem.
 - ✅ Pareizība pēc virtualizācijas manuāli pārbaudīta (indeksācija,
   noturība pret ritināšanu, dzīvais kopsavilkums, identiska kopsumma
   pirms/pēc ar reālo failu), ne tikai ātrums.
-- ⚠️ IndexedDB saglabāšanas laiks (~6.5s Sesijā 12) netika atsevišķi mērīts
-  šajā sesijā — šis labojums risina tikai render pusi, nevis saglabāšanu.
+- ✅ IndexedDB saglabāšanas/ielādes laiks reālam failam izmērīts un
+  apstiprināts kā jau atrisināts (skat. augšā) — 3.4s -> 0.4s saglabājot,
+  6.4s -> 1.3s lapas pārlādei, tas pats pirms/pēc `git worktree` salīdzinājums.
 
 ## 🔜 NĀKAMAIS UZDEVUMS
 
@@ -514,10 +533,5 @@ sākšanas. Iespējamie kandidāti:
 2. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
 3. **Favicon** — joprojām neaizskarts, nekritiski.
-4. **IndexedDB saglabāšanas ātrums** — Sesijā 12 mērītais ~6.5s
-   saglabāšanas laiks lielam projektam netika risināts Sesijā 13 (tā
-   skāra tikai render, ne saglabāšanu); ja tas joprojām ir problēma, vērts
-   izmērīt atsevišķi un lemt par risinājumu (piem. batch/laika ziņā
-   optimizēta IndexedDB rakstīšana).
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

@@ -278,6 +278,21 @@ Playwright reālā Chromium):**
   līmenī) atjaunojas pareizi. Mazu projektu (1 sadaļa, 1 pozīcija) plūsma
   nemainīga — nav negribētas ritjoslas.
 
+**Apstiprināts arī pret to pašu reālo Sesijas 12 failu** (53-lapu VELVE
+tāme), tiešā pirms/pēc salīdzinājumā tajā pašā vidē (`git worktree` uz
+commit tieši pirms šī labojuma, blakus pašreizējam kodam, abi caur `vite
+preview`):
+- Imports + render: 18.3s -> 6.0s (~3.0x ātrāk); DOM `<input>` mezgli:
+  90132 -> 9268; KOPĀ AR PVN identisks abās versijās (116003891.89 €) —
+  apstiprina, ka pareizība nav skarta.
+- **"Saglabāt" (IndexedDB raksts):** 3.4s -> 0.4s (~8.7x ātrāk). Lapas
+  pārlāde + projekta atvēršana: 6.4s -> 1.3s (~4.8x ātrāk). Sesijā 12
+  minētais ~6.5s "saglabāšanas" laiks izrādījās nevis IndexedDB raksta
+  izmaksa pati par sevi, bet React re-renderis pēc `setState` (pirms
+  labojuma — visu ~90k input mezglu pārbūve no jauna pēc katras `save`/
+  ielādes) — tātad šis labojums risina arī to, nevis tikai sākotnējo
+  importa renderi.
+
 ## Palaišana
 
 ```bash
