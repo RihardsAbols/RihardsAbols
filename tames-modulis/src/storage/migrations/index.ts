@@ -1,12 +1,18 @@
-import type { BoqState } from "../../models/boq.js";
+import { CURRENT_SCHEMA_VERSION, DEFAULT_VAT_RATE, type BoqState } from "../../models/boq.js";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export { CURRENT_SCHEMA_VERSION };
 
 type Migration = (data: Record<string, unknown>) => Record<string, unknown>;
 
 // Keyed by the version a migration upgrades FROM. Add v1->v2 etc. here as the
 // schema evolves; each entry must produce data one version higher than its key.
-const migrations: Record<number, Migration> = {};
+const migrations: Record<number, Migration> = {
+  // v1 had no vatRate field; default new BOQ calculations to the standard LV rate.
+  1: (data) => ({
+    ...data,
+    vatRate: typeof data.vatRate === "number" ? data.vatRate : DEFAULT_VAT_RATE,
+  }),
+};
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(version: unknown) {

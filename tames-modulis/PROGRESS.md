@@ -39,17 +39,52 @@ reāla brauzera UI, kas to lietotu (Sesija 7+, skat. CLAUDE.md).
 - ✅ Shēmas versiju migrācijas stubs gatavs (v1, ar vietu nākamajām
   versijām), typecheck tīrs (`npx tsc --noEmit`).
 
+## Sesija 6: BOQ aprēķinu kodols — summas un PVN — ✅ pabeigts
+
+**Uzdevums:** pozīciju/sadaļu summas un PVN aprēķins virs esošā datu modeļa.
+
+**Lēmums:** PVN likme (`vatRate`) glabājas katrā `BoqState`, nevis kā globāla
+konstante — noklusējums `DEFAULT_VAT_RATE = 0.21` (LV standarta likme). Tā kā
+`vatRate` ir jauns obligāts lauks, šī bija reāla shēmas maiņa, nevis tikai
+stubs — `schemaVersion` pacelts uz `2`, un pirmoreiz tiek izmantota migrāciju
+ķēde, kas tapa Sesijā 5 (`v1 -> v2` pievieno trūkstošo `vatRate`).
+
+**Implementēts:**
+- `src/calculations/boq.ts` — `calculateItemTotal`, `calculateSectionSubtotal`,
+  `summarizeBoq` (atgriež `BoqSummary`: sadaļu starpsummas, `subtotal`,
+  `vatRate`, `vatAmount`, `total`) un `round2` palīgfunkcija naudas
+  noapaļošanai. Summēšana notiek pa nenoapaļotiem starprezultātiem, tikai
+  beigās noapaļojot — lai daudzu sīku pozīciju gadījumā kļūda nesakrātos.
+- `src/models/boq.ts` — pievienots `vatRate: number` laukam `BoqState`,
+  `DEFAULT_VAT_RATE` konstante, `CURRENT_SCHEMA_VERSION` pārcelts uz šejieni
+  (modelis tagad "pieder" savai versijai) un pacelts uz `2`.
+- `src/storage/migrations/index.ts` — pievienota `1: (data) => ...` migrācija,
+  kas pievieno `vatRate: DEFAULT_VAT_RATE`, ja tā trūkst; saglabā esošu
+  vērtību, ja tā jau ir norādīta.
+- `test/calculations.test.ts` — 7 testi: pozīcijas/sadaļas summas, pilns
+  kopsavilkums ar PVN, tukšs projekts (visur 0), noapaļošanas artefaktu
+  tests (`0.1 + 0.2` u.c.).
+- `test/storage.test.ts` — papildināts ar migrāciju testiem: trūkstoša
+  versija -> `v2` + noklusējuma PVN, eksplicīts `v1` bez `vatRate` -> `v2`,
+  un jau esoša `vatRate` vērtība netiek pārrakstīta migrācijas laikā.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Visi testi zaļi: `npm test` — 15/15 (8 storage + 7 calculations).
+- ✅ Typecheck tīrs (`npx tsc --noEmit`).
+- ✅ Migrācijas mehānisms reāli nostrādāts (ne tikai teorētisks stubs).
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **BOQ aprēķinu kodols** — sadaļu/pozīciju summas, starpsummas, PVN.
-2. **Excel imports/eksports** — ievērojot, ka repo jau ir saistīta
+1. **Excel imports/eksports** — ievērojot, ka repo jau ir saistīta
    `izpildes-akts-validacija` prasme (izpildes aktu salīdzināšana ar tāmi),
    iespējams, BOQ modulim vajadzēs savietojamību ar to pašu `.xlsx` formātu.
-3. **Projektu saraksts / CRUD virs `StorageAdapter`** — pirms UI, lai būtu
+2. **Projektu saraksts / CRUD virs `StorageAdapter`** — pirms UI, lai būtu
    API līmenis projektu izveidei/dzēšanai, ne tikai viena projekta
    save/load.
+3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
+   likmes pa pozīcijām), ja tas ir reāls prasību lauks.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.
