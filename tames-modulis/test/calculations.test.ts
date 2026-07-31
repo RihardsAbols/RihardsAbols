@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  calculateItemTotal,
-  calculateSectionSubtotal,
-  round2,
-  summarizeBoq,
-} from "../src/calculations/boq.js";
+import { calculateItemCosts, calculateSectionDirectTotal, round2, summarizeBoq } from "../src/calculations/boq.js";
 import { createEmptyBoqState } from "../src/models/boq.js";
 import type { BoqItem, BoqSection } from "../src/models/boq.js";
 
@@ -15,7 +10,9 @@ function item(overrides: Partial<BoqItem> = {}): BoqItem {
     description: "Pozīcija",
     unit: "m2",
     quantity: 1,
-    unitPrice: 1,
+    unitLaborCost: 0,
+    unitMaterialsCost: 1,
+    unitMechanismsCost: 0,
     ...overrides,
   };
 }
@@ -31,45 +28,79 @@ describe("round2", () => {
   });
 });
 
-describe("calculateItemTotal", () => {
-  it("multiplies quantity by unit price", () => {
-    expect(calculateItemTotal(item({ quantity: 120, unitPrice: 4.5 }))).toBe(540);
+describe("calculateItemCosts", () => {
+  it("multiplies quantity by each unit cost component and sums them", () => {
+    const costs = calculateItemCosts(
+      item({ quantity: 100, unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 }),
+    );
+    expect(costs).toEqual({ laborTotal: 500, materialsTotal: 300, mechanismsTotal: 200, directTotal: 1000 });
   });
 });
 
-describe("calculateSectionSubtotal", () => {
-  it("sums item totals within a section", () => {
+describe("calculateSectionDirectTotal", () => {
+  it("sums item direct totals within a section", () => {
     const s = section([
-      item({ id: "a", quantity: 2, unitPrice: 10 }),
-      item({ id: "b", quantity: 3, unitPrice: 5 }),
+      item({ id: "a", quantity: 2, unitLaborCost: 4, unitMaterialsCost: 3, unitMechanismsCost: 3 }),
+      item({ id: "b", quantity: 3, unitLaborCost: 1, unitMaterialsCost: 1, unitMechanismsCost: 3 }),
     ]);
-    expect(calculateSectionSubtotal(s)).toBe(35);
+    expect(calculateSectionDirectTotal(s)).toBe(35);
   });
 
   it("returns 0 for a section with no items", () => {
-    expect(calculateSectionSubtotal(section([]))).toBe(0);
+    expect(calculateSectionDirectTotal(section([]))).toBe(0);
   });
 });
 
 describe("summarizeBoq", () => {
-  it("computes subtotal, VAT and total across sections", () => {
+  it("computes direct costs, overhead, profit and VAT across sections", () => {
     const state = createEmptyBoqState("proj-1", "Testa projekts");
+    state.overheadRate = 0.12;
+    state.profitRate = 0.05;
     state.vatRate = 0.21;
     state.sections = [
-      section([item({ id: "a", quantity: 100, unitPrice: 10 })], { id: "sec-1", name: "Zemes darbi" }),
-      section([item({ id: "b", quantity: 50, unitPrice: 4 })], { id: "sec-2", name: "Betonēšana" }),
+      section([item({ id: "a", quantity: 100, unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 })], {
+        id: "sec-1",
+        name: "Zemes darbi",
+      }),
+      section([item({ id: "b", quantity: 50, unitLaborCost: 2, unitMaterialsCost: 1.5, unitMechanismsCost: 0.5 })], {
+        id: "sec-2",
+        name: "Betonēšana",
+      }),
     ];
 
     const summary = summarizeBoq(state);
 
     expect(summary.sections).toEqual([
-      { id: "sec-1", name: "Zemes darbi", subtotal: 1000 },
-      { id: "sec-2", name: "Betonēšana", subtotal: 200 },
+      {
+        id: "sec-1",
+        name: "Zemes darbi",
+        laborTotal: 500,
+        materialsTotal: 300,
+        mechanismsTotal: 200,
+        directTotal: 1000,
+        overhead: 120,
+        profit: 50,
+        totalWithMarkup: 1170,
+      },
+      {
+        id: "sec-2",
+        name: "Betonēšana",
+        laborTotal: 100,
+        materialsTotal: 75,
+        mechanismsTotal: 25,
+        directTotal: 200,
+        overhead: 24,
+        profit: 10,
+        totalWithMarkup: 234,
+      },
     ]);
-    expect(summary.subtotal).toBe(1200);
+    expect(summary.directTotal).toBe(1200);
+    expect(summary.overhead).toBe(144);
+    expect(summary.profit).toBe(60);
+    expect(summary.subtotal).toBe(1404);
     expect(summary.vatRate).toBe(0.21);
-    expect(summary.vatAmount).toBe(252);
-    expect(summary.total).toBe(1452);
+    expect(summary.vatAmount).toBe(294.84);
+    expect(summary.total).toBe(1698.84);
   });
 
   it("returns all zeros for a project with no sections", () => {
@@ -77,6 +108,11 @@ describe("summarizeBoq", () => {
     const summary = summarizeBoq(state);
     expect(summary).toEqual({
       sections: [],
+      directTotal: 0,
+      overheadRate: state.overheadRate,
+      overhead: 0,
+      profitRate: state.profitRate,
+      profit: 0,
       subtotal: 0,
       vatRate: state.vatRate,
       vatAmount: 0,
@@ -86,15 +122,20 @@ describe("summarizeBoq", () => {
 
   it("does not compound rounding error across many small items", () => {
     const state = createEmptyBoqState("proj-3", "Noapaļošanas tests");
+    state.overheadRate = 0;
+    state.profitRate = 0;
     state.vatRate = 0.21;
     state.sections = [
       section(
-        Array.from({ length: 3 }, (_, i) => item({ id: `i${i}`, quantity: 1, unitPrice: 0.1 })),
+        Array.from({ length: 3 }, (_, i) =>
+          item({ id: `i${i}`, quantity: 1, unitLaborCost: 0, unitMaterialsCost: 0.1, unitMechanismsCost: 0 }),
+        ),
         { id: "sec-1", name: "Sīkas pozīcijas" },
       ),
     ];
 
     const summary = summarizeBoq(state);
+    expect(summary.directTotal).toBe(0.3);
     expect(summary.subtotal).toBe(0.3);
   });
 });

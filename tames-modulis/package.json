@@ -9,6 +9,9 @@
     "test": "node --experimental-vm-modules node_modules/.bin/vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
   "devDependencies": {
     "typescript": "^5.5.4",
     "vitest": "^2.0.5",

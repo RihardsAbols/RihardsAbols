@@ -5,45 +5,116 @@ export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-export function calculateItemTotal(item: BoqItem): number {
-  return item.quantity * item.unitPrice;
+export interface BoqItemCosts {
+  laborTotal: number;
+  materialsTotal: number;
+  mechanismsTotal: number;
+  /** Tiešās izmaksas šai pozīcijai (darba alga + materiāli + mehānismi). */
+  directTotal: number;
 }
 
-export function calculateSectionSubtotal(section: BoqSection): number {
-  return section.items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+export function calculateItemCosts(item: BoqItem): BoqItemCosts {
+  const laborTotal = item.quantity * item.unitLaborCost;
+  const materialsTotal = item.quantity * item.unitMaterialsCost;
+  const mechanismsTotal = item.quantity * item.unitMechanismsCost;
+  return {
+    laborTotal,
+    materialsTotal,
+    mechanismsTotal,
+    directTotal: laborTotal + materialsTotal + mechanismsTotal,
+  };
+}
+
+function sumSectionRawCosts(section: BoqSection): BoqItemCosts {
+  return section.items.reduce<BoqItemCosts>(
+    (sum, item) => {
+      const costs = calculateItemCosts(item);
+      return {
+        laborTotal: sum.laborTotal + costs.laborTotal,
+        materialsTotal: sum.materialsTotal + costs.materialsTotal,
+        mechanismsTotal: sum.mechanismsTotal + costs.mechanismsTotal,
+        directTotal: sum.directTotal + costs.directTotal,
+      };
+    },
+    { laborTotal: 0, materialsTotal: 0, mechanismsTotal: 0, directTotal: 0 },
+  );
+}
+
+/** Tiešās izmaksas sadaļai (darba alga + materiāli + mehānismi), bez virsizdevumiem/peļņas. */
+export function calculateSectionDirectTotal(section: BoqSection): number {
+  return sumSectionRawCosts(section).directTotal;
 }
 
 export interface BoqSectionSummary {
   id: string;
   name: string;
-  subtotal: number;
+  laborTotal: number;
+  materialsTotal: number;
+  mechanismsTotal: number;
+  /** Tiešās izmaksas (bez virsizdevumiem/peļņas/PVN). */
+  directTotal: number;
+  overhead: number;
+  profit: number;
+  /** Tiešās izmaksas + virsizdevumi + peļņa (bez PVN). */
+  totalWithMarkup: number;
 }
 
 export interface BoqSummary {
   sections: BoqSectionSummary[];
-  /** Summa bez PVN. */
+  directTotal: number;
+  overheadRate: number;
+  overhead: number;
+  profitRate: number;
+  profit: number;
+  /** Pavisam pirms PVN (tiešās izmaksas + virsizdevumi + peļņa). */
   subtotal: number;
   vatRate: number;
-  /** PVN summa. */
   vatAmount: number;
-  /** Summa ar PVN. */
+  /** Pavisam ar PVN. */
   total: number;
 }
 
 export function summarizeBoq(state: BoqState): BoqSummary {
-  // Sum unrounded section totals first, then round once at the end — rounding
-  // each section before summing would let per-section rounding drift compound.
-  const rawSections = state.sections.map((section) => ({
-    id: section.id,
-    name: section.name,
-    raw: calculateSectionSubtotal(section),
-  }));
+  // Sum unrounded intermediates first, then round once at the end — rounding
+  // each section (or each markup step) before summing would let per-step
+  // rounding drift compound across sections/items.
+  const rawSections = state.sections.map((section) => {
+    const raw = sumSectionRawCosts(section);
+    const overhead = raw.directTotal * state.overheadRate;
+    const profit = raw.directTotal * state.profitRate;
+    return {
+      id: section.id,
+      name: section.name,
+      raw,
+      overhead,
+      profit,
+      totalWithMarkup: raw.directTotal + overhead + profit,
+    };
+  });
 
-  const rawSubtotal = rawSections.reduce((sum, section) => sum + section.raw, 0);
+  const rawDirectTotal = rawSections.reduce((sum, s) => sum + s.raw.directTotal, 0);
+  const rawOverhead = rawDirectTotal * state.overheadRate;
+  const rawProfit = rawDirectTotal * state.profitRate;
+  const rawSubtotal = rawDirectTotal + rawOverhead + rawProfit;
   const rawVatAmount = rawSubtotal * state.vatRate;
 
   return {
-    sections: rawSections.map(({ id, name, raw }) => ({ id, name, subtotal: round2(raw) })),
+    sections: rawSections.map(({ id, name, raw, overhead, profit, totalWithMarkup }) => ({
+      id,
+      name,
+      laborTotal: round2(raw.laborTotal),
+      materialsTotal: round2(raw.materialsTotal),
+      mechanismsTotal: round2(raw.mechanismsTotal),
+      directTotal: round2(raw.directTotal),
+      overhead: round2(overhead),
+      profit: round2(profit),
+      totalWithMarkup: round2(totalWithMarkup),
+    })),
+    directTotal: round2(rawDirectTotal),
+    overheadRate: state.overheadRate,
+    overhead: round2(rawOverhead),
+    profitRate: state.profitRate,
+    profit: round2(rawProfit),
     subtotal: round2(rawSubtotal),
     vatRate: state.vatRate,
     vatAmount: round2(rawVatAmount),

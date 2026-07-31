@@ -16,12 +16,30 @@ tā uzbūvētu brauzera saskarni.
   Raksta caur pagaidu failu + `rename`, lai avārijas gadījumā fails
   nepaliktu pusceļā pierakstīts.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2` (pievieno `vatRate`), `migrateToCurrent` atbalsta
-  pakāpenisku migrāciju pievienošanu arī turpmāk.
-- `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas summa
-  (`calculateItemTotal`), sadaļas starpsumma (`calculateSectionSubtotal`),
-  un pilns kopsavilkums ar PVN (`summarizeBoq` -> `BoqSummary`).
-- `test/` — vitest testi (glabāšanas round-trip, migrāciju stubs, aprēķini).
+  Pašreiz `v1 -> v2 -> v3`, `migrateToCurrent` atbalsta pakāpenisku
+  migrāciju pievienošanu arī turpmāk.
+- `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
+  (`calculateItemCosts`), sadaļas tiešās izmaksas
+  (`calculateSectionDirectTotal`), un pilns kopsavilkums ar virsizdevumiem,
+  peļņu un PVN (`summarizeBoq` -> `BoqSummary`).
+- `src/excel/` — Excel imports/eksports:
+  - `columns.ts` — `TAME_COLUMNS` (Līguma tāmes kolonnu karte) un
+    `KNOWN_UNITS` (mērvienību saraksts datu rindu atpazīšanai), abi tieši
+    pārņemti no `izpildes-akts-validacija` skill dokumentācijas, lai formāti
+    sakristu.
+  - `export.ts` — `exportBoqToWorkbook`/`exportBoqToBuffer`: viena darblapa
+    (`KOPSAVILKUMS`) ar pieņēmumiem (likmes) un projekta kopsavilkumu, un pa
+    darblapai katrai sadaļai ar pozīcijām. Šūnas raksta ar **formulām**
+    (nevis tikai gala vērtībām), pievienojot arī kešotu `result`, lai fails
+    rāda pareizas vērtības uzreiz, pat ja neviens neatver to Excel/LibreOffice.
+  - `import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`: datu rindas
+    atpazīst pēc mērvienības kolonnas (nevis fiksētas rindas numura), tāpēc
+    var lasīt gan pašu ģenerētus failus, gan reālus Līguma tāmes failus.
+    Atvasinātās kolonnas (Vienības kopā, Kopā *) netiek lasītas atpakaļ —
+    tās vienmēr pārrēķina `calculations/boq.ts`, lai nebūtu divu patiesības
+    avotu.
+- `test/` — vitest testi (glabāšanas round-trip, migrāciju stubs, aprēķini,
+  Excel eksports/imports round-trip un imports no "svešas" darblapas).
 
 ## Lēmumi
 
@@ -44,6 +62,19 @@ tā uzbūvētu brauzera saskarni.
   daudzu sīku pozīciju gadījumā noapaļošanas kļūda nesakrātos. Sadaļu
   starpsummas kopsavilkumā gan tiek parādītas noapaļotas (displejam), bet
   kopsummas aprēķins tās neizmanto par pamatu.
+- **`BoqItem` sadala izmaksas darba algā/materiālos/mehānismos** (nevis viens
+  `unitPrice`), lai eksportētie/importētie faili atbilstu reālajai Latvijas
+  Līguma tāmes struktūrai, ko izmanto arī `izpildes-akts-validacija` skill.
+  Virsizdevumi (`overheadRate`, noklusējums 12%) un peļņa (`profitRate`,
+  noklusējums 5%) tiek rēķināti no tiešajām izmaksām sadaļas/projekta līmenī,
+  nevis pa pozīcijām — tā strādā arī izpildes aktu validācijas skill.
+- **Excel imports/eksports ir apzināti dokumentēti kā daļēji zaudējošs
+  (lossy)** ceļš, nevis pilna JSON glabāšanas alternatīva: Excel neuztur
+  mūsu iekšējos `id` laukus, tāpēc importējot sadaļas `id` kļūst par
+  darblapas nosaukumu un pozīciju `id` tiek ģenerēts no jauna. Pilnai,
+  bezzudumu glabāšanai turpina izmantot `StorageAdapter`/JSON — Excel ir
+  cilvēkiem lasāms/rediģējams un savietojams ar citiem rīkiem formāts, nevis
+  primārais glabātuve.
 
 ## Palaišana
 

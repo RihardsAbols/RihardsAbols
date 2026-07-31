@@ -1,4 +1,10 @@
-import { CURRENT_SCHEMA_VERSION, DEFAULT_VAT_RATE, type BoqState } from "../../models/boq.js";
+import {
+  CURRENT_SCHEMA_VERSION,
+  DEFAULT_OVERHEAD_RATE,
+  DEFAULT_PROFIT_RATE,
+  DEFAULT_VAT_RATE,
+  type BoqState,
+} from "../../models/boq.js";
 
 export { CURRENT_SCHEMA_VERSION };
 
@@ -12,7 +18,40 @@ const migrations: Record<number, Migration> = {
     ...data,
     vatRate: typeof data.vatRate === "number" ? data.vatRate : DEFAULT_VAT_RATE,
   }),
+  // v2 items had a single `unitPrice` instead of a labor/materials/mechanisms
+  // split. There is no way to recover that split from a single number, so we
+  // fold the whole v2 unitPrice into unitMaterialsCost (an approximation, not
+  // a correction) and zero the other two components. Also adds the new
+  // project-level overheadRate/profitRate.
+  2: (data) => ({
+    ...data,
+    overheadRate: typeof data.overheadRate === "number" ? data.overheadRate : DEFAULT_OVERHEAD_RATE,
+    profitRate: typeof data.profitRate === "number" ? data.profitRate : DEFAULT_PROFIT_RATE,
+    sections: Array.isArray(data.sections)
+      ? data.sections.map((section) => migrateSectionV2ToV3(section as Record<string, unknown>))
+      : data.sections,
+  }),
 };
+
+function migrateSectionV2ToV3(section: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...section,
+    items: Array.isArray(section.items)
+      ? section.items.map((item) => migrateItemV2ToV3(item as Record<string, unknown>))
+      : section.items,
+  };
+}
+
+function migrateItemV2ToV3(item: Record<string, unknown>): Record<string, unknown> {
+  const { unitPrice, ...rest } = item;
+  return {
+    ...rest,
+    unitLaborCost: typeof item.unitLaborCost === "number" ? item.unitLaborCost : 0,
+    unitMaterialsCost:
+      typeof item.unitMaterialsCost === "number" ? item.unitMaterialsCost : typeof unitPrice === "number" ? unitPrice : 0,
+    unitMechanismsCost: typeof item.unitMechanismsCost === "number" ? item.unitMechanismsCost : 0,
+  };
+}
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(version: unknown) {

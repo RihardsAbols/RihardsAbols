@@ -73,17 +73,83 @@ stubs — `schemaVersion` pacelts uz `2`, un pirmoreiz tiek izmantota migrāciju
 - ✅ Typecheck tīrs (`npx tsc --noEmit`).
 - ✅ Migrācijas mehānisms reāli nostrādāts (ne tikai teorētisks stubs).
 
+## Sesija 7: Excel imports/eksports — ✅ pabeigts
+
+**Uzdevums:** BOQ Excel imports/eksports.
+
+**Lēmums (apstiprināts ar lietotāju):** eksportētais/importētais formāts
+atbilst reālajai Latvijas "Līguma tāme" kolonnu kartei, ko izmanto arī
+`izpildes-akts-validacija` skill (darba alga/materiāli/mehānismi
+sadalījums + virsizdevumi 12% + peļņa 5% + PVN), nevis vienkāršotam
+`unitPrice` modelim. Tas nozīmēja reālu datu modeļa paplašinājumu:
+
+- `BoqItem.unitPrice` aizstāts ar `unitLaborCost` / `unitMaterialsCost` /
+  `unitMechanismsCost`.
+- `BoqState` papildināts ar `overheadRate` (noklusējums 12%) un
+  `profitRate` (noklusējums 5%).
+- `schemaVersion` pacelts uz `3`, ar jaunu `v2 -> v3` migrāciju. Tā kā nav
+  iespējams atgūt darba algas/materiālu/mehānismu sadalījumu no viena
+  vecā `unitPrice`, migrācija to (apzināti, ar zaudējumu) ieliek
+  `unitMaterialsCost` un pārējās divas komponentes uzstāda uz `0` — tas ir
+  dokumentēts kā tuvinājums, nevis korekcija.
+
+**Implementēts:**
+- `src/calculations/boq.ts` pārrakstīts: `calculateItemCosts` (darba
+  alga/materiāli/mehānismi -> tiešās izmaksas), `summarizeBoq` tagad rēķina
+  pilnu ķēdi: tiešās izmaksas -> virsizdevumi -> peļņa -> pavisam (bez PVN)
+  -> PVN -> kopā ar PVN. Rounding stratēģija (noapaļot tikai beigās) saglabāta.
+- `src/excel/columns.ts` — `TAME_COLUMNS` (kolonnu karte) un `KNOWN_UNITS`
+  (mērvienību saraksts), abi pārņemti tieši no izpildes-akts-validacija
+  SKILL.md, lai formāti sakristu.
+- `src/excel/export.ts` — `exportBoqToWorkbook`/`exportBoqToBuffer` (exceljs).
+  `KOPSAVILKUMS` darblapa ar likmju pieņēmumiem un projekta kopsavilkumu,
+  pa darblapai katrai sadaļai. Šūnas ar formulām (nevis hardkodētām
+  vērtībām), ar kešotu `result`, lai fails rāda pareizas summas uzreiz.
+- `src/excel/import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`.
+  Datu rindas atpazīst pēc mērvienības kolonnas satura (nevis rindas
+  numura) — tas pats princips, kas izpildes-akts-validacija skill, tāpēc
+  var importēt gan pašu ģenerētus failus, gan patiesus Līguma tāmes
+  failus ar citu rindu/kolonnu izkārtojumu (papildu galvenes u.tml.).
+  Atvasinātās kolonnas (Vienības kopā, Kopā *) netiek lasītas — vienmēr
+  pārrēķinātas, lai nebūtu divu patiesības avotu.
+- `test/calculations.test.ts` — pārrakstīts jaunajam modelim (7 testi).
+- `test/storage.test.ts` — papildināts ar `v2 -> v3` migrācijas testu
+  (unitPrice -> unitMaterialsCost sadale).
+- `test/excel.test.ts` — 5 jauni testi: eksports/imports round-trip
+  (sadaļas/pozīcijas, `summarizeBoq` rezultāti sakrīt), `KOPSAVILKUMS`
+  darblapa netiek importēta kā sadaļa (nav datu rindu), un imports no
+  manuāli būvētas "svešas" darblapas ar citu izkārtojumu (pierāda, ka
+  atpazīšana strādā neatkarīgi no rindu/kolonnu pozīcijas, ne tikai uz
+  pašu eksportētiem failiem).
+
+**Manuāla pārbaude:** eksportēts paraugfails pārbaudīts ar `openpyxl`
+(`data_only=True`) — visas kešotās formulu vērtības atbilst
+`summarizeBoq` aprēķinam (tiešās izmaksas 1200, virsizdevumi 144, peļņa 60,
+pavisam 1404, PVN 294.84, kopā 1698.84). LibreOffice `recalc.py` pārbaude
+šajā vidē pārtrūka (`soffice` timeout, iespējams vides ierobežojums), tāpēc
+formulu *pareizību Excel atverot* nav apstiprinājis pats LibreOffice — bet
+tā kā katrā formulas šūnā jau ir kešota, pareiza `result` vērtība, fails ir
+lietojams uzreiz neatkarīgi no tā.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Visi testi zaļi: `npm test` — 20/20 (8 storage + 7 calculations + 5 excel).
+- ✅ Typecheck tīrs (`npx tsc --noEmit`).
+- ✅ Migrācijas mehānisms iztestēts arī `v2 -> v3` gadījumam.
+- ⚠️ LibreOffice recalc nav apstiprinājis formulas šajā vidē (skat. augšā) —
+  ja nākamajā sesijā ir pieejams strādājošs `soffice`, vērts atkārtot pārbaudi.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **Excel imports/eksports** — ievērojot, ka repo jau ir saistīta
-   `izpildes-akts-validacija` prasme (izpildes aktu salīdzināšana ar tāmi),
-   iespējams, BOQ modulim vajadzēs savietojamību ar to pašu `.xlsx` formātu.
-2. **Projektu saraksts / CRUD virs `StorageAdapter`** — pirms UI, lai būtu
+1. **Projektu saraksts / CRUD virs `StorageAdapter`** — pirms UI, lai būtu
    API līmenis projektu izveidei/dzēšanai, ne tikai viena projekta
    save/load.
+2. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
+   fails, importēt to un salīdzināt rezultātu, lai apstiprinātu, ka
+   `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt ar reālo formātu
+   (pašlaik pārbaudīts tikai pret SKILL.md dokumentāciju, ne pret reālu failu).
 3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
 
