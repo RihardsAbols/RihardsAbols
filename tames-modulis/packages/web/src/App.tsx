@@ -38,6 +38,25 @@ export function App() {
     await refreshProjects();
   };
 
+  const handleImport = async (file: File) => {
+    setError(null);
+    try {
+      // Dynamic import so exceljs is only fetched when someone actually
+      // imports a file, not on every page load - same reasoning as the
+      // export button in ProjectEditor.
+      const { importBoqFromBuffer } = await import("@tames-modulis/core/excel");
+      const buffer = await file.arrayBuffer();
+      const projectId = crypto.randomUUID();
+      const projectName = file.name.replace(/\.xlsx?$/i, "");
+      const state = await importBoqFromBuffer(buffer, projectId, projectName);
+      await adapter.save(projectId, state);
+      await refreshProjects();
+      setSelectedProjectId(projectId);
+    } catch (err) {
+      setError(`Kļūda importējot: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   if (loading) {
     return <p className="loading">Ielādē...</p>;
   }
@@ -53,6 +72,7 @@ export function App() {
           onSelect={setSelectedProjectId}
           onCreate={handleCreate}
           onDelete={handleDelete}
+          onImport={handleImport}
         />
         {selectedProjectId ? (
           <ProjectEditor adapter={adapter} projectId={selectedProjectId} onSaved={refreshProjects} />

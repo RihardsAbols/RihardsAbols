@@ -81,6 +81,11 @@ body {
   min-width: 0;
 }
 
+.import-button {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
 .project-editor {
   background: white;
   border: 1px solid #ddd;

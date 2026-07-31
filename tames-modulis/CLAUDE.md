@@ -86,7 +86,11 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   ar IndexedDB (viens object store `projects`, keyPath `projectId`, vērtība
   ir pilns `BoqState`). `load`/`list` izlaiž datus caur `migrateToCurrent`,
   tāpat kā `FileSystemStorageAdapter`.
-- `src/components/ProjectList.tsx` — projektu saraksts, izveide, dzēšana.
+- `src/components/ProjectList.tsx` — projektu saraksts, izveide, dzēšana, un
+  "Importēt Excel" (failu izvēle -> `importBoqFromBuffer` -> jauns
+  projekts, nosaukums no faila nosaukuma). Tāpat kā eksports, imports
+  dinamiski importē `@tames-modulis/core/excel` failu izvēles apstrādē,
+  nevis statiski.
 - `src/components/ProjectEditor.tsx` — sadaļu/pozīciju rediģēšana, likmju
   (virsizdevumi/peļņa/PVN) rediģēšana, dzīvs kopsavilkums (`summarizeBoq`
   pārrēķināts katrā render), "Saglabāt" (IndexedDB) un "Eksportēt Excel"
@@ -120,6 +124,14 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   bezzudumu glabāšanai izmanto `StorageAdapter` (fails/IndexedDB).
 - **`exceljs` ir code-split, nevis daļa no galvenā UI bundle** — skat.
   "Bundle izmērs / code-splitting" zemāk.
+- **Excel imports UI vienmēr izveido JAUNU projektu**, nevis pārraksta
+  atvērtā projekta sadaļas — vienkāršāk un drošāk (nav riska nejauši
+  pārrakstīt esošu projektu), un simetriski ar "+ Jauns" formu (abi ir
+  "izveidot projektu" varianti — pēc nosaukuma vai pēc faila). Projekta
+  nosaukums pēc noklusējuma nāk no faila nosaukuma (bez paplašinājuma);
+  lietotājs var to pārsaukt redaktorā. "Importēt no faila esošā projektā"
+  (papildinošs/pārrakstošs imports) apzināti nav implementēts — skat.
+  PROGRESS.md.
 - **`ProjectService` ir plāns slānis virs `StorageAdapter`**, testēts pret
   vienkāršu in-memory adapteri neatkarīgi no faila sistēmas vai brauzera.
 - **React + Vite priekš UI** — lielākā ekosistēma, vieglāk atrast palīdzību;
@@ -150,10 +162,13 @@ joprojām ir tajā pašā statiski importētajā modulī, ko lieto arī citur:
    kods, un ieejas punkti"), lai tas vairs nebūtu daļa no moduļa, ko
    `packages/web` importē statiski citām vajadzībām (`createProject`,
    `summarizeBoq` u.c.).
-2. `packages/web/src/components/ProjectEditor.tsx` `handleExport`
-   iekšienē `exportBoqToBuffer` tiek iegūts ar
-   `await import("@tames-modulis/core/excel")` tikai eksporta klikšķa
-   brīdī, nevis statiski faila augšā.
+2. `packages/web/src/components/ProjectEditor.tsx` `handleExport` un
+   `App.tsx` `handleImport` iekšienē `exportBoqToBuffer`/
+   `importBoqFromBuffer` tiek iegūti ar
+   `await import("@tames-modulis/core/excel")` attiecīgi eksporta klikšķa
+   un faila izvēles brīdī, nevis statiski faila augšā. Abas vietas
+   dinamiski importē to pašu moduli, tāpēc Rollup to iebūvē vienā kopīgā
+   chunk'ā (nevis dublē).
 
 **Rezultāts (pārbaudīts):** `vite build` galvenais JS bundle samazinājās
 no ~1098KB uz ~155KB (49.9KB gzip); `exceljs` tagad ir atsevišķs ~945KB

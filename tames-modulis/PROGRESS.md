@@ -281,21 +281,73 @@ izmērs nav problēma.
 - ✅ Playwright apstiprināja lazy-loading uzvedību un eksporta pareizību
   reālā Chromium, ne tikai unit testos.
 
+## Sesija 11: Excel imports UI — ✅ pabeigts
+
+**Uzdevums:** savienot jau esošo `importBoqFromBuffer` (core) ar UI —
+lietotājam jāvar importēt `.xlsx` failu tieši no brauzera.
+
+**Lēmums:** imports vienmēr izveido JAUNU projektu (nevis pārraksta atvērtā
+projekta sadaļas) — vienkāršāk, drošāk, un simetriski ar "+ Jauns" formu.
+Novietots `ProjectList.tsx` līdzās projektu izveides formai (poga
+"Importēt Excel" + paslēpts `<input type="file">`). Projekta nosaukums pēc
+noklusējuma nāk no faila nosaukuma (bez `.xlsx` paplašinājuma); lietotājs
+var pārsaukt redaktorā tāpat kā jebkuru citu projektu. Papildinošs/
+pārrakstošs imports esošā projektā apzināti nav implementēts (skat.
+zemāk NĀKAMAIS UZDEVUMS, ja tas kādreiz kļūst vajadzīgs).
+
+**Implementēts:**
+- `App.tsx` — `handleImport(file)`: dinamiski importē
+  `@tames-modulis/core/excel` (tāpat kā eksports Sesijā 10, lai
+  saglabātu code-splitting), lasa failu ar `file.arrayBuffer()`, ģenerē
+  `projectId` ar `crypto.randomUUID()`, atvasina `projectName` no faila
+  nosaukuma, izsauc `importBoqFromBuffer`, saglabā tieši caur
+  `adapter.save()` (nevis `ProjectService.createProject` + pārraksts —
+  imports jau atgriež gatavu pilnu `BoqState`), atsvaidzina sarakstu un
+  izvēlas jauno projektu.
+- `ProjectList.tsx` — "Importēt Excel" poga + paslēpts failu ievades
+  lauks, "Importē..." stāvoklis kamēr notiek imports.
+
+**Manuāla pārbaude (Playwright + reāls Chromium):**
+1. Izveidots avota projekts UI, eksportēts uz `.xlsx` (reāls faila
+   lejupielādes ceļš, ne mākslīgi konstruēts fails).
+2. Svaigā lapas ielādē apstiprināts: nav excel/exceljs pieprasījumu
+   sākotnējā ielādē (code-splitting joprojām strādā importam tāpat kā
+   eksportam — abi dinamiskie importi uz to pašu moduli Rollup apvieno
+   vienā chunk'ā, nevis dublē).
+3. Importēts iepriekš eksportētais fails caur UI — projekta nosaukums,
+   sadaļas nosaukums, visas pozīcijas vērtības (kods, apraksts, mērv.,
+   daudzums, darba alga/materiāli/mehānismi) un kopsavilkuma aprēķini
+   sakrita precīzi ar oriģinālu.
+4. Pārbaudīta noturība: lapas pārlāde pēc importa — dati saglabājušies
+   IndexedDB, kopsavilkums nemainīgs.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: visi 31 testi joprojām zaļi, typecheck tīrs (izmaiņas nebija
+  vajadzīgas core pusē — `importBoqFromBuffer` jau bija implementēts un
+  testēts Sesijā 7).
+- ✅ Web: typecheck tīrs, `vite build` bundle izmēri nemainīgi (~155KB
+  galvenais chunk, ~945KB koplietots lazy excel chunk gan eksportam, gan
+  importam).
+- ✅ Pilns imports-caur-UI ceļš manuāli pārbaudīts ar Playwright, ieskaitot
+  code-splitting uzvedību un datu noturību pēc pārlādes.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **Excel imports UI** — pašlaik UI ir tikai eksporta poga; ja vajag arī
-   importēt `.xlsx` failu no brauzera (fails jau ir `importBoqFromBuffer`
-   `core` pusē, vienkārši nav savienots ar UI — un tam vajadzētu tāpat
-   izmantot `@tames-modulis/core/excel` ar dinamisku `import()`).
-2. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
-   fails, importēt to un salīdzināt rezultātu, lai apstiprinātu, ka
-   `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt ar reālo formātu.
+1. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
+   fails (nevis pašu ģenerēts), importēt to un salīdzināt rezultātu, lai
+   apstiprinātu, ka `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt
+   ar reālo formātu.
+2. **"Importēt esošā projektā" (papildināt/pārrakstīt)** — pašreiz imports
+   vienmēr izveido jaunu projektu; ja vajag arī iespēju ievest `.xlsx`
+   datus jau atvērtā projektā (piem. no `ProjectEditor.tsx`), tas
+   jāapstiprina, jo nav skaidrs, vai tam jāpapildina vai jāpārraksta
+   esošās sadaļas.
 3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
 4. **Favicon** un **veiktspējas pārbaude ar lielu datu apjomu** (daudz
-   sadaļu/pozīciju) — abi joprojām neaizskarti no iepriekšējās sesijas.
+   sadaļu/pozīciju) — abi joprojām neaizskarti no iepriekšējām sesijām.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

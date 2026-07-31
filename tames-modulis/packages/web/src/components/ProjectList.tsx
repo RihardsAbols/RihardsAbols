@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type { ProjectListEntry } from "@tames-modulis/core";
 
 interface ProjectListProps {
@@ -7,10 +7,13 @@ interface ProjectListProps {
   onSelect: (projectId: string) => void;
   onCreate: (name: string) => Promise<void>;
   onDelete: (projectId: string) => Promise<void>;
+  onImport: (file: File) => Promise<void>;
 }
 
-export function ProjectList({ projects, selectedProjectId, onSelect, onCreate, onDelete }: ProjectListProps) {
+export function ProjectList({ projects, selectedProjectId, onSelect, onCreate, onDelete, onImport }: ProjectListProps) {
   const [newName, setNewName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -18,6 +21,18 @@ export function ProjectList({ projects, selectedProjectId, onSelect, onCreate, o
     if (!name) return;
     await onCreate(name);
     setNewName("");
+  };
+
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+    setImporting(true);
+    try {
+      await onImport(file);
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -31,6 +46,20 @@ export function ProjectList({ projects, selectedProjectId, onSelect, onCreate, o
         />
         <button type="submit">+ Jauns</button>
       </form>
+      <button
+        className="import-button"
+        disabled={importing}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        {importing ? "Importē..." : "Importēt Excel"}
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx"
+        hidden
+        onChange={(e) => void handleFileChange(e)}
+      />
       <ul>
         {projects.map((project) => (
           <li key={project.projectId} className={project.projectId === selectedProjectId ? "selected" : ""}>
