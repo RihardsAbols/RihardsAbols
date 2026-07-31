@@ -1,4 +1,4 @@
-import { exportBoqToBuffer, summarizeBoq } from "@tames-modulis/core";
+import { summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useState } from "react";
 
@@ -49,6 +49,7 @@ function toAsciiFileName(name: string): string {
 export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProps) {
   const [state, setState] = useState<BoqState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -123,7 +124,12 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
 
   const handleExport = async () => {
     setStatus(null);
+    setExporting(true);
     try {
+      // Dynamic import so exceljs (a large dependency) is only fetched when
+      // someone actually clicks export, instead of bloating the initial
+      // page load for everyone who never uses it.
+      const { exportBoqToBuffer } = await import("@tames-modulis/core/excel");
       const buffer = await exportBoqToBuffer(state);
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -140,6 +146,8 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
       URL.revokeObjectURL(url);
     } catch (err) {
       setStatus(`Kļūda eksportējot: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -155,7 +163,9 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button onClick={handleSave} disabled={saving}>
             {saving ? "Saglabā..." : "Saglabāt"}
           </button>
-          <button onClick={handleExport}>Eksportēt Excel</button>
+          <button onClick={handleExport} disabled={exporting}>
+            {exporting ? "Sagatavo..." : "Eksportēt Excel"}
+          </button>
         </div>
       </div>
       {status && <p className="status">{status}</p>}

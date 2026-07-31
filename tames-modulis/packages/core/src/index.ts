@@ -27,6 +27,8 @@ export {
   calculateSectionDirectTotal,
   summarizeBoq,
 } from "./calculations/boq.js";
-export { TAME_COLUMNS, KNOWN_UNITS } from "./excel/columns.js";
-export { exportBoqToWorkbook, exportBoqToBuffer } from "./excel/export.js";
-export { importBoqFromWorkbook, importBoqFromBuffer } from "./excel/import.js";
+// Excel export/import is intentionally NOT re-exported here: it pulls in
+// exceljs, a large dependency most consumers of this barrel (e.g. the
+// project-list/editor UI) don't need on every page load. Import it from
+// "@tames-modulis/core/excel" instead - see src/excel/index.ts - ideally via
+// a dynamic import() at the call site so bundlers can code-split it.

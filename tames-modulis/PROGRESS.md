@@ -246,20 +246,56 @@ neskarts.
 - ⚠️ Nav testēts, kā UI uzvedas ar ļoti daudzām sadaļām/pozīcijām
   (veiktspēja, ritināšana) — pārbaudīts tikai ar mazu paraugu.
 
+## Sesija 10: `exceljs` code-splitting — ✅ pabeigts
+
+**Uzdevums:** eksporta poga lazy-load'o `exceljs`, lai sākotnējā UI ielāde
+nebūtu ~1MB smaga tikai tāpēc, ka pastāv Excel eksporta poga.
+
+**Atklājums implementācijas laikā:** ar `import()` klikšķa apstrādātājā
+nepietiek, kamēr `exceljs` atkarīgais kods (`excel/export.ts`) joprojām
+tiek statiski eksportēts no `@tames-modulis/core` galvenā barela
+(`src/index.ts`), ko `packages/web` jau tāpat importē statiski citām
+vajadzībām (`createProject`, `summarizeBoq` u.c.) — Rollup tad ievelk visu
+moduļa grafu vienā (agrīni ielādētā) daļā neatkarīgi no `import()`.
+Risinājums: izņemts `excel/*` no `src/index.ts`, pievienota atsevišķa
+`package.json` `exports` ieeja `@tames-modulis/core/excel`
+(`src/excel/index.ts`), un tikai to importē dinamiski
+`ProjectEditor.tsx`'s `handleExport`. Node puses `@tames-modulis/core/node`
+(`src/node.ts`) re-eksportē `excel/*` arī turpmāk, jo Node pusē bundle
+izmērs nav problēma.
+
+**Rezultāts (pārbaudīts):**
+- `vite build` galvenais JS chunk: ~1098KB -> ~155KB (49.9KB gzip).
+  `exceljs` tagad atsevišķs ~945KB chunk.
+- Playwright tests apstiprināja: neviens pieprasījums, kas satur
+  "excel"/"exceljs", nenotiek sākotnējā lapas ielādē; tie parādās tikai
+  pēc "Eksportēt Excel" klikšķa, un lejupielādētais fails joprojām derīgs
+  (pārbaudīts ar `openpyxl`).
+- Eksporta pogai pievienots "Sagatavo..." stāvoklis, kamēr chunk ielādējas.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: visi 31 testi joprojām zaļi, typecheck tīrs.
+- ✅ Web: typecheck tīrs, `vite build` bez galvenā bundle izmēra
+  brīdinājuma (brīdinājums par ~945KB chunk paliek, bet tas ir tikai
+  Excel eksporta lazy chunk, ne sākotnējā ielāde — nekritiski).
+- ✅ Playwright apstiprināja lazy-loading uzvedību un eksporta pareizību
+  reālā Chromium, ne tikai unit testos.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **`exceljs` bundle izmēra optimizācija** — dinamisks imports Excel
-   eksporta/importa kodam, lai sākotnējā UI ielāde nebūtu ~1MB smaga.
-2. **Excel imports UI** — pašlaik UI ir tikai eksporta poga; ja vajag arī
+1. **Excel imports UI** — pašlaik UI ir tikai eksporta poga; ja vajag arī
    importēt `.xlsx` failu no brauzera (fails jau ir `importBoqFromBuffer`
-   `core` pusē, vienkārši nav savienots ar UI).
-3. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
+   `core` pusē, vienkārši nav savienots ar UI — un tam vajadzētu tāpat
+   izmantot `@tames-modulis/core/excel` ar dinamisku `import()`).
+2. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
    fails, importēt to un salīdzināt rezultātu, lai apstiprinātu, ka
    `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt ar reālo formātu.
-4. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
+3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
+4. **Favicon** un **veiktspējas pārbaude ar lielu datu apjomu** (daudz
+   sadaļu/pozīciju) — abi joprojām neaizskarti no iepriekšējās sesijas.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

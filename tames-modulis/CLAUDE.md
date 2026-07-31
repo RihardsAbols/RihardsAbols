@@ -32,7 +32,9 @@ Npm workspace ar divām pakotnēm:
   (`calculateItemCosts`), sadaļas tiešās izmaksas
   (`calculateSectionDirectTotal`), un pilns kopsavilkums ar virsizdevumiem,
   peļņu un PVN (`summarizeBoq` -> `BoqSummary`).
-- `src/excel/` — Excel imports/eksports:
+- `src/excel/` — Excel imports/eksports. **Nav daļa no universālā
+  `src/index.ts` barela** (skat. zemāk) — pieejams caur
+  `@tames-modulis/core/excel` (`src/excel/index.ts`).
   - `columns.ts` — `TAME_COLUMNS` (Līguma tāmes kolonnu karte) un
     `KNOWN_UNITS` (mērvienību saraksts datu rindu atpazīšanai), abi tieši
     pārņemti no `izpildes-akts-validacija` skill dokumentācijas, lai formāti
@@ -54,7 +56,7 @@ Npm workspace ar divām pakotnēm:
   Excel eksports/imports round-trip un imports no "svešas" darblapas,
   `ProjectService` CRUD pret in-memory `StorageAdapter`).
 
-### Node vs. universāls kods
+### Node vs. universāls kods, un ieejas punkti
 
 `src/index.ts` ir **universālais barels** — drīkst importēt tikai kodu, kas
 strādā gan Node, gan brauzerī (bez `node:fs`, `node:crypto` u.tml.), jo
@@ -67,6 +69,16 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   globāls arī Node 19+), nevis `import { randomUUID } from "node:crypto"`.
 - `excel/export.ts`/`import.ts` lieto `ArrayBuffer`, nevis Node `Buffer`,
   jo pēdējais nepastāv brauzerī bez polyfill.
+- **`excel/` (exceljs) arī NAV daļa no `src/index.ts`** — ne Node/browser
+  savietojamības, bet **bundle izmēra** dēļ: `exceljs` ir liels (~1MB
+  minificēts), un lielākā daļa `@tames-modulis/core` patērētāju (projektu
+  saraksts, rediģēšana) to nemaz nelieto. Pieejams caur atsevišķu
+  `package.json` `exports` ieeju `@tames-modulis/core/excel`
+  (`src/excel/index.ts`), ko `packages/web` importē ar dinamisku `import()`
+  tikai eksporta pogas klikšķī — skat. "Bundle izmērs / code-splitting".
+- Node puses kodam (`@tames-modulis/core/node`, `src/node.ts`) bundle
+  izmērs nav aktuāls, tāpēc tas re-eksportē arī `excel/index.js` — Node
+  patērētājiem nav jāzina par atsevišķo `/excel` ieeju.
 
 ## Struktūra (`packages/web`)
 
@@ -78,7 +90,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
 - `src/components/ProjectEditor.tsx` — sadaļu/pozīciju rediģēšana, likmju
   (virsizdevumi/peļņa/PVN) rediģēšana, dzīvs kopsavilkums (`summarizeBoq`
   pārrēķināts katrā render), "Saglabāt" (IndexedDB) un "Eksportēt Excel"
-  (lejupielādē `.xlsx`, izmantojot `exportBoqToBuffer`).
+  (lejupielādē `.xlsx`). Eksporta poga importē `exportBoqToBuffer` ar
+  dinamisku `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis
+  statiski augšā failā — skat. "Bundle izmērs / code-splitting" zemāk.
 - `src/App.tsx` — savieno sarakstu un redaktoru, tur vienīgā
   `IndexedDbStorageAdapter` instance.
 
@@ -104,6 +118,8 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
 - **Excel imports/eksports ir apzināti dokumentēts kā daļēji zaudējošs
   (lossy)** ceļš — Excel neuztur mūsu iekšējos `id` laukus. Pilnai,
   bezzudumu glabāšanai izmanto `StorageAdapter` (fails/IndexedDB).
+- **`exceljs` ir code-split, nevis daļa no galvenā UI bundle** — skat.
+  "Bundle izmērs / code-splitting" zemāk.
 - **`ProjectService` ir plāns slānis virs `StorageAdapter`**, testēts pret
   vienkāršu in-memory adapteri neatkarīgi no faila sistēmas vai brauzera.
 - **React + Vite priekš UI** — lielākā ekosistēma, vieglāk atrast palīdzību;
@@ -120,6 +136,30 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   testa artefakts — tas skars reālus lietotājus, jo projektu nosaukumi
   latviešu valodā parasti satur diakritiku. Faila iekšējais saturs
   (`projectName`) paliek neskarts.
+
+### Bundle izmērs / code-splitting
+
+`exceljs` (~1MB minificēts) sākotnēji nokļuva galvenajā UI bundle, jo
+`packages/web` importēja `exportBoqToBuffer` statiski no
+`@tames-modulis/core`, un tas caur `src/index.ts` barelu ievilka arī
+`excel/export.ts` -> `exceljs`. Risinājums bija divpusējs — nepietiek
+vienkārši uzrakstīt `import()` klikšķa apstrādātājā, ja pati atkarība
+joprojām ir tajā pašā statiski importētajā modulī, ko lieto arī citur:
+
+1. Izņemts `excel/*` eksports no `src/index.ts` (skat. "Node vs. universāls
+   kods, un ieejas punkti"), lai tas vairs nebūtu daļa no moduļa, ko
+   `packages/web` importē statiski citām vajadzībām (`createProject`,
+   `summarizeBoq` u.c.).
+2. `packages/web/src/components/ProjectEditor.tsx` `handleExport`
+   iekšienē `exportBoqToBuffer` tiek iegūts ar
+   `await import("@tames-modulis/core/excel")` tikai eksporta klikšķa
+   brīdī, nevis statiski faila augšā.
+
+**Rezultāts (pārbaudīts):** `vite build` galvenais JS bundle samazinājās
+no ~1098KB uz ~155KB (49.9KB gzip); `exceljs` tagad ir atsevišķs ~945KB
+chunk, kas Playwright testā apstiprināti netiek pieprasīts sākotnējā lapas
+ielādē — tikai pēc "Eksportēt Excel" klikšķa. Eksportētais fails joprojām
+derīgs (pārbaudīts ar `openpyxl`).
 
 ## Palaišana
 
