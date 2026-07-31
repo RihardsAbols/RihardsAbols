@@ -420,21 +420,88 @@ ir konkrēti skaitļi, nevis minējums.
 - ✅ Reāls fails manuāli pārbaudīts gan Node skriptā, gan caur UI
   (Playwright), ar konkrētiem skaitliskiem salīdzinājumiem pret avota datiem.
 
+## Sesija 13: UI veiktspēja ar lielu datu apjomu — ✅ pabeigts
+
+**Uzdevums:** izlabot Sesijā 12 atklāto problēmu — imports+render ~17-26.5s
+ar 12876 pozīcijām. Lietotājs apstiprināja kandidātu #1 (UI veiktspēja) no
+iepriekšējās sesijas saraksta.
+
+**Lēmums (apstiprināts ar lietotāju pēc kandidātu izklāsta):** rindu
+virtualizācija katras sadaļas pozīciju tabulai, nevis sakļautas sadaļas pēc
+noklusējuma vai lapošana — skat. CLAUDE.md "Pozīciju tabulas
+virtualizācija" pilnu pamatojumu, kāpēc ne sakļautas sadaļas (mainītu UX
+mazām sadaļām un nerisinātu problēmu pašu par sevi, ja viena sadaļa liela)
+un kāpēc ne bibliotēka (piem. `react-window`) — bundle izmērs ir apzināta
+prioritāte šajā projektā (skat. arī `exceljs` code-splitting lēmumu).
+
+**Implementēts:**
+- `packages/web/src/components/ItemsTable.tsx` — jauns. Izņemta sadaļas
+  pozīciju tabula no `ProjectEditor.tsx` atsevišķā komponentē ar pašrocīgu
+  windowing virtualizāciju: ritināms konteiners (`max-height: 480px`),
+  renderē tikai redzamās rindas (+ overscan), pārējo aizpilda ar diviem
+  "spacer" `<tr>` (augšā/apakšā), lai ritjoslas augstums paliktu pareizs.
+  Fiksēta rindas augstuma tuvinājuma (`ROW_HEIGHT = 33`) vietā mērīšanas
+  vietā, jo visas rindas ir vienāda izkārtojuma.
+- `packages/web/src/components/ProjectEditor.tsx` — inline tabula aizstāta
+  ar `<ItemsTable items={section.items} onUpdateItem={...}
+  onRemoveItem={...} />` katrai sadaļai.
+- `packages/web/src/App.css` — `.items-table-scroll` (ritināmais
+  konteiners), `.items-table thead th` `position: sticky` (galvene paliek
+  redzama ritinot sadaļas iekšienē).
+
+**Manuāla pārbaude (Playwright, reāls Chromium, ne tikai unit testi):**
+- Sagatavots sintētisks fixture fails (47 sadaļas × 274 pozīcijas =
+  12878 pozīcijas — identiska struktūra Sesijas 12 reālajam failam, jo
+  reālais fails šajā sesijā nebija pieejams; ģenerēts ar
+  `exportBoqToBuffer` no core, importēts caur UI tāpat kā reāls fails).
+- **Pirms labojuma (baseline, izmērīts šajā vidē ar `vite preview`):**
+  imports+render ~17.0s, 90146 `<input>` DOM mezgli uzreiz (12878 poz. × 7
+  lauki — atbilst tieši).
+- **Pēc labojuma:** imports+render ~3.1s (~5.4x ātrāk), ~10199 `<input>`
+  DOM mezgli (tikai redzamās rindas 47 sadaļās, nevis visas 12878).
+- Pareizības pārbaude pēc virtualizācijas: ritināšana sadaļas iekšienē
+  pareizi nomaina redzamās rindas (pārbaudīts pēc koda, ne tikai
+  vizuāli); rediģēšana virtualizētā (ritinātā) rindā pielieto izmaiņu
+  pareizajai pozīcijai pēc reālā indeksa, nevis redzamā; izmaiņas
+  saglabājas, ritinot prom un atpakaļ; sadaļas un projekta kopsavilkums
+  atjaunojas pareizi pēc rediģēšanas.
+- Regresijas pārbaude mazam projektam (1 sadaļa, 1 pozīcija, izveidots caur
+  UI "+"): summas pareizas, nav negribētas ritjoslas (`scrollHeight <=
+  clientHeight`), UX vizuāli nemainīgs salīdzinājumā ar iepriekšējo sesiju.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: visi 39 testi joprojām zaļi (izmaiņas bija tikai `packages/web`
+  pusē, core netika skarts).
+- ✅ Typecheck tīrs abās pakotnēs.
+- ✅ `vite build` veiksmīgs, bundle izmēri nemainīgi (virtualizācija ir
+  tikai izmaiņa render loģikā, ne jauna atkarība).
+- ✅ Veiktspējas uzlabojums pierādīts ar konkrētiem skaitļiem (17.0s ->
+  3.1s, 90146 -> ~10199 DOM mezgli), ne tikai apgalvots.
+- ✅ Pareizība pēc virtualizācijas manuāli pārbaudīta (indeksācija,
+  noturība pret ritināšanu, dzīvais kopsavilkums), ne tikai ātrums.
+- ⚠️ **Nav pabeigts/zināms trūkums:** pārbaudīts ar sintētisku fixture, ne
+  ar to pašu reālo 53-lapu failu, kas bija pieejams Sesijā 12 (fails nebija
+  pieejams šajā sesijā) — struktūra identiska (sadaļu/pozīciju skaits), bet
+  vērts būtu apstiprināt arī ar reālo failu, ja tas atkal kļūst pieejams.
+- ⚠️ IndexedDB saglabāšanas laiks (~6.5s Sesijā 12) netika atsevišķi mērīts
+  šajā sesijā — šis labojums risina tikai render pusi, nevis saglabāšanu.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **UI veiktspēja ar lielu datu apjomu** — tagad apstiprināts reāls
-   problēma (~26.5s importam+renderam ar 12876 pozīcijām). Iespējamie
-   risinājumi: rindu/sadaļu virtualizācija, "lazy" sadaļu paplašināšana
-   (sākumā sakļautas), vai lapošana pa sadaļām.
-2. **"Importēt esošā projektā" (papildināt/pārrakstīt)** — pašreiz imports
+1. **"Importēt esošā projektā" (papildināt/pārrakstīt)** — pašreiz imports
    vienmēr izveido jaunu projektu; ja vajag arī iespēju ievest `.xlsx`
    datus jau atvērtā projektā, jāapstiprina papildināšanas/pārrakstīšanas
    semantika.
-3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
+2. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
-4. **Favicon** — joprojām neaizskarts, nekritiski.
+3. **Favicon** — joprojām neaizskarts, nekritiski.
+4. **IndexedDB saglabāšanas ātrums** — Sesijā 12 mērītais ~6.5s
+   saglabāšanas laiks lielam projektam netika risināts Sesijā 13 (tā
+   skāra tikai render, ne saglabāšanu); ja tas joprojām ir problēma, vērts
+   izmērīt atsevišķi un lemt par risinājumu (piem. batch/laika ziņā
+   optimizēta IndexedDB rakstīšana).
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

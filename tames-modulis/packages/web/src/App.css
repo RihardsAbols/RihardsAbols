@@ -167,10 +167,15 @@ body {
   outline: none;
 }
 
+.items-table-scroll {
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+  border: 1px solid #eee;
+}
+
 .items-table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 0.5rem;
 }
 
 .items-table th,
@@ -178,6 +183,13 @@ body {
   border-bottom: 1px solid #eee;
   padding: 0.25rem;
   text-align: left;
+}
+
+.items-table thead th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
 }
 
 .items-table input {

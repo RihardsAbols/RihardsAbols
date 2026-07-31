@@ -1,6 +1,7 @@
 import { summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useState } from "react";
+import { ItemsTable } from "./ItemsTable.js";
 
 interface ProjectEditorProps {
   adapter: StorageAdapter;
@@ -213,83 +214,11 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
               <button onClick={() => removeSection(sectionIndex)}>Dzēst sadaļu</button>
             </div>
 
-            <table className="items-table">
-              <thead>
-                <tr>
-                  <th>Nr.</th>
-                  <th>Nosaukums</th>
-                  <th>Mērv.</th>
-                  <th>Daudz.</th>
-                  <th>Darba alga</th>
-                  <th>Materiāli</th>
-                  <th>Mehānismi</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {section.items.map((item, itemIndex) => (
-                  <tr key={item.id}>
-                    <td>
-                      <input value={item.code} onChange={(e) => updateItem(sectionIndex, itemIndex, { code: e.target.value })} />
-                    </td>
-                    <td>
-                      <input
-                        value={item.description}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { description: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="unit-input"
-                        value={item.unit}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        className="number-input"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { quantity: Number(e.target.value) })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        className="number-input"
-                        value={item.unitLaborCost}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { unitLaborCost: Number(e.target.value) })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        className="number-input"
-                        value={item.unitMaterialsCost}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, { unitMaterialsCost: Number(e.target.value) })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        className="number-input"
-                        value={item.unitMechanismsCost}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, { unitMechanismsCost: Number(e.target.value) })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button aria-label="Dzēst pozīciju" onClick={() => removeItem(sectionIndex, itemIndex)}>
-                        ×
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ItemsTable
+              items={section.items}
+              onUpdateItem={(itemIndex, patch) => updateItem(sectionIndex, itemIndex, patch)}
+              onRemoveItem={(itemIndex) => removeItem(sectionIndex, itemIndex)}
+            />
             <button onClick={() => addItem(sectionIndex)}>+ Pozīcija</button>
 
             <div className="section-summary">

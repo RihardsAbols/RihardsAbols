@@ -103,6 +103,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   (lejupielādē `.xlsx`). Eksporta poga importē `exportBoqToBuffer` ar
   dinamisku `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis
   statiski augšā failā — skat. "Bundle izmērs / code-splitting" zemāk.
+- `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
+  virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
+  `ProjectEditor.tsx` katrai sadaļai.
 - `src/App.tsx` — savieno sarakstu un redaktoru, tur vienīgā
   `IndexedDbStorageAdapter` instance.
 
@@ -235,6 +238,45 @@ SKILL.md dokumentācijā nebija minēti: `pāris`, `vieta`, `ltr`, `objekts`,
 `normalizeUnit` apstrādā galotnes punktus/komatus un Unicode
 augšraksta ciparus (`m²`→`m2`, `m³`→`m3`) tā vietā, lai katru variantu
 uzskaitītu atsevišķi.
+
+### Pozīciju tabulas virtualizācija (UI veiktspēja)
+
+Sesijā 12 (reāla 53-lapu Līguma tāmes faila pārbaude) atklāts, ka `import` +
+render UI ar 12876 pozīcijām aizņēma ~17-26.5s, jo `ProjectEditor` renderēja
+katras sadaļas VISAS pozīcijas uzreiz — 7 `<input>` elementi uz pozīciju,
+kopā ~90k DOM mezglu. Sesijā 13 tas izlabots ar rindu virtualizāciju
+(`ItemsTable.tsx`): katras sadaļas tabula ir ietverta ritināmā konteinerī
+(`max-height: 480px`), un renderē tikai rindas, kas ietilpst redzamajā
+apgabalā (+ nedaudz overscan uz katru pusi), pārējo vietu aizpildot ar
+diviem "spacer" `<tr>` (augšā/apakšā), lai ritjoslas augstums paliktu
+pareizs. Rindas augstums (`ROW_HEIGHT = 33`) ir fiksēta tuvināta vērtība,
+nevis mērīta katrai rindai — pietiekami, jo visām rindām ir vienāds
+izkārtojums.
+
+**Kāpēc nevis bibliotēka (piem. `react-window`):** ievērots tas pats
+princips kā `exceljs` code-splitting lēmumā (skat. zemāk) — bundle izmērs
+ir apzināta prioritāte šajā projektā, un pašrocīga virtualizācija bez
+papildu atkarības ir pietiekami vienkārša fiksēta-augstuma tabulai.
+
+**Kāpēc nevis sakļautas sadaļas pēc noklusējuma:** tas mainītu UX arī
+mazu projektu gadījumā (lietotājam jāklikšķina, lai redzētu pozīcijas) un
+nerisinātu pašu problēmu — pat viena sadaļa ar simtiem pozīciju joprojām
+būtu lēna, ja atvērta. Virtualizācija strādā neatkarīgi no sadaļu skaita
+UN pozīciju skaita sadaļā, tāpēc UX nemainās mazām sadaļām (viss ietilpst,
+nav ritjoslas), bet lielām sadaļām DOM mezglu skaits paliek ierobežots.
+
+**Rezultāts (pārbaudīts ar sintētisku 47 sadaļu × 274 pozīciju failu,
+identiska struktūra reālajam Sesijas 12 failam, ģenerēts un pārbaudīts ar
+Playwright reālā Chromium):**
+- Imports + render: ~17s -> ~3.1s (~5.4x ātrāk).
+- DOM `<input>` mezglu skaits pēc importa: 90146 -> ~10199 (tikai redzamās
+  rindas katrā no 47 sadaļām, nevis visas).
+- Manuāli pārbaudīts: ritināšana sadaļas iekšienē pareizi maina redzamās
+  rindas, rediģēšana virtualizētā rindā pielieto izmaiņu pareizajai
+  pozīcijai (nevis redzamajam indeksam), izmaiņas saglabājas pēc
+  ritināšanas prom un atpakaļ, dzīvais kopsavilkums (sadaļas un projekta
+  līmenī) atjaunojas pareizi. Mazu projektu (1 sadaļa, 1 pozīcija) plūsma
+  nemainīga — nav negribētas ritjoslas.
 
 ## Palaišana
 
