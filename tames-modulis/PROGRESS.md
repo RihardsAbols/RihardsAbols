@@ -521,17 +521,78 @@ ar šo pašu labojumu, nevis prasa atsevišķu risinājumu.
   apstiprināts kā jau atrisināts (skat. augšā) — 3.4s -> 0.4s saglabājot,
   6.4s -> 1.3s lapas pārlādei, tas pats pirms/pēc `git worktree` salīdzinājums.
 
+## Sesija 14: "Importēt esošā projektā" — ✅ pabeigts
+
+**Uzdevums:** kandidāts #1 no Sesijas 13 atlikušā saraksta — imports
+`.xlsx` failā jau atvērtā (esošā) projektā, nevis tikai jauna projekta
+izveide (kā jau bija `ProjectList.tsx`).
+
+**Lēmums (apstiprināts ar lietotāju, jautāts tieši pirms ieviešanas):**
+**pārrakstīt**, ne papildināt — importētās sadaļas aizstāj VISAS esošā
+projekta sadaļas; projekta ID/nosaukums/likmes paliek nemainīgi. Alternatīvas
+(papildināt/pievienot klāt, vai jautāt katru reizi UI) tika piedāvātas, bet
+noraidītas kā lietotāja izvēle par labu vienkāršākajam gadījumam ("aizstāt
+saturu ar jaunu tāmes versiju").
+
+**Implementēts (tikai `packages/web`, core nemainīts):**
+- `packages/web/src/components/ProjectEditor.tsx` — jauna poga "Importēt
+  Excel (pārrakstīt sadaļas)" redaktora galvenē, blakus "Saglabāt"/
+  "Eksportēt Excel". `handleImportFileChange`: `confirm()` dialogs pirms
+  pārrakstīšanas (destruktīva darbība — skat. CLAUDE.md "Executing actions
+  with care" principu, kas attiecas arī uz UI, ne tikai git); pēc
+  apstiprinājuma dinamiski importē `@tames-modulis/core/excel` (tāpat kā
+  eksports/`ProjectList` imports, saglabājot code-splitting), izsauc
+  `importBoqFromBuffer(buffer, state.projectId, state.projectName)`, un
+  ņem tikai atgrieztā stāvokļa `.sections` — pārējais (`projectId`,
+  `projectName`, likmes, `createdAt`) paliek no pašreizējā `state`.
+  Rezultāts tiek uzstādīts uz lokālo React stāvokli (tāpat kā jebkura cita
+  rediģēšana) — **nesaglabājas automātiski**, lietotājam jānospiež
+  "Saglabāt", lai izmaiņas persistētu IndexedDB. Tas dod iespēju
+  pārskatīt importēto rezultātu, pirms tas neatgriezeniski aizstāj
+  saglabāto projektu.
+
+**Manuāla pārbaude (Playwright, reāls Chromium):**
+- Izveidots avota projekts ar atšķirīgu saturu, eksportēts uz `.xlsx`.
+- Izveidots mērķa projekts ar CITU saturu un mainītu virsizdevumu likmi
+  (15% vietā no 12%).
+- Atcelts (dismiss) apstiprinājuma dialogs -> mērķa projekta sadaļa
+  nemainīga (pareizi, nekas nenotika).
+- Apstiprināts (accept) dialogs -> mērķa projekta sadaļa AIZSTĀTA ar
+  avota sadaļu (sadaļu skaits paliek 1, ne 2 — pareizi PĀRRAKSTA, ne
+  papildina); pozīcijas kods sakrīt ar avota faila datiem.
+- Virsizdevumu likme (15%) un projekta nosaukums ("Mērķa projekts")
+  NETIEK skarti pēc importa — pareizi, tikai sadaļas mainījās.
+- Pēc "Saglabāt" + lapas pārlādes izmaiņas persistē IndexedDB.
+- `exceljs` chunk (~946KB, identificēts pēc faila izmēra tīkla
+  pieprasījumos, jo Vite hash nosaukumi literāli nesatur "excel") netiek
+  pieprasīts sākotnējā lapas ielādē vai projekta izveidē — tikai pēc
+  importa klikšķa redaktorā, tāpat kā eksportam un `ProjectList` importam.
+
+**Kļūda testa skriptā laikā (ne lietotnē) atrasta un izlabota pašā
+pārbaudes gaitā:** pirmā mēģinājuma testa skripts aizpildīja tikai pozīcijas
+"kods" lauku, atstājot "mērvienība" tukšu — imports korekti atgrieza 0
+sadaļas (0 pozīcijas), jo rindas bez atpazītas mērvienības NAV datu rindas
+(dokumentēts uzvedība kopš Sesijas 12/7, skat. CLAUDE.md "Kolonnu
+noteikšana"). Apstiprināts ar `detectImportColumns` tiešu inspekciju
+(pagaidu vitest skripts, izdzēsts pēc lietošanas), ka kolonnas TIEK
+pareizi atpazītas — problēma bija testa datos, ne kodā. Pēc testa skripta
+labošanas (mērvienība + daudzums aizpildīti) imports strādāja pareizi.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: visi 39 testi joprojām zaļi (izmaiņas bija tikai `packages/web`).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs, bundle izmēri
+  nemainīgi.
+- ✅ Pilna imports-esošā-projektā plūsma manuāli pārbaudīta ar Playwright:
+  atcelšana, pārrakstīšanas semantika, likmju/nosaukuma saglabāšana,
+  persistence pēc saglabāšanas, code-splitting.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **"Importēt esošā projektā" (papildināt/pārrakstīt)** — pašreiz imports
-   vienmēr izveido jaunu projektu; ja vajag arī iespēju ievest `.xlsx`
-   datus jau atvērtā projektā, jāapstiprina papildināšanas/pārrakstīšanas
-   semantika.
-2. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
+1. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
-3. **Favicon** — joprojām neaizskarts, nekritiski.
+2. **Favicon** — joprojām neaizskarts, nekritiski.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

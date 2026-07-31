@@ -99,9 +99,11 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   nevis statiski.
 - `src/components/ProjectEditor.tsx` — sadaļu/pozīciju rediģēšana, likmju
   (virsizdevumi/peļņa/PVN) rediģēšana, dzīvs kopsavilkums (`summarizeBoq`
-  pārrēķināts katrā render), "Saglabāt" (IndexedDB) un "Eksportēt Excel"
-  (lejupielādē `.xlsx`). Eksporta poga importē `exportBoqToBuffer` ar
-  dinamisku `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis
+  pārrēķināts katrā render), "Saglabāt" (IndexedDB), "Eksportēt Excel"
+  (lejupielādē `.xlsx`) un "Importēt Excel (pārrakstīt sadaļas)" (imports
+  esošā, jau atvērtā projektā — skat. "Imports esošā projektā" zemāk).
+  Eksporta/importa pogas importē `exportBoqToBuffer`/`importBoqFromBuffer`
+  ar dinamisku `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis
   statiski augšā failā — skat. "Bundle izmērs / code-splitting" zemāk.
 - `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
@@ -133,14 +135,16 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   bezzudumu glabāšanai izmanto `StorageAdapter` (fails/IndexedDB).
 - **`exceljs` ir code-split, nevis daļa no galvenā UI bundle** — skat.
   "Bundle izmērs / code-splitting" zemāk.
-- **Excel imports UI vienmēr izveido JAUNU projektu**, nevis pārraksta
-  atvērtā projekta sadaļas — vienkāršāk un drošāk (nav riska nejauši
-  pārrakstīt esošu projektu), un simetriski ar "+ Jauns" formu (abi ir
-  "izveidot projektu" varianti — pēc nosaukuma vai pēc faila). Projekta
-  nosaukums pēc noklusējuma nāk no faila nosaukuma (bez paplašinājuma);
-  lietotājs var to pārsaukt redaktorā. "Importēt no faila esošā projektā"
-  (papildinošs/pārrakstošs imports) apzināti nav implementēts — skat.
-  PROGRESS.md.
+- **`ProjectList.tsx` "Importēt Excel" vienmēr izveido JAUNU projektu**,
+  nevis pārraksta atvērtā projekta sadaļas — vienkāršāk un drošāk (nav
+  riska nejauši pārrakstīt esošu projektu tikai izvēloties nepareizu
+  failu), un simetriski ar "+ Jauns" formu (abi ir "izveidot projektu"
+  varianti — pēc nosaukuma vai pēc faila). Projekta nosaukums pēc
+  noklusējuma nāk no faila nosaukuma (bez paplašinājuma); lietotājs var to
+  pārsaukt redaktorā.
+- **`ProjectEditor.tsx` "Importēt Excel (pārrakstīt sadaļas)"** (Sesija 14)
+  importē failu ESOŠĀ, jau atvērtā projektā — skat. "Imports esošā
+  projektā" zemāk pilnu pamatojumu un semantiku.
 - **`ProjectService` ir plāns slānis virs `StorageAdapter`**, testēts pret
   vienkāršu in-memory adapteri neatkarīgi no faila sistēmas vai brauzera.
 - **React + Vite priekš UI** — lielākā ekosistēma, vieglāk atrast palīdzību;
@@ -292,6 +296,43 @@ preview`):
   labojuma — visu ~90k input mezglu pārbūve no jauna pēc katras `save`/
   ielādes) — tātad šis labojums risina arī to, nevis tikai sākotnējo
   importa renderi.
+
+### Imports esošā projektā
+
+Sesijā 14 pievienots "Importēt Excel (pārrakstīt sadaļas)" `ProjectEditor.tsx`
+redaktora galvenē — līdzās jau esošajam `ProjectList.tsx` "Importēt Excel"
+(kas vienmēr veido jaunu projektu, skat. augšā "Lēmumi").
+
+**Semantika (apstiprināta ar lietotāju): pārrakstīt, ne papildināt.**
+Importētās sadaļas AIZSTĀJ visas esošā projekta sadaļas pilnībā — nevis
+tiek pievienotas klāt. Projekta `projectId`, `projectName`, likmes
+(`overheadRate`/`profitRate`/`vatRate`) un `createdAt` netiek skarti,
+tikai `sections`. Implementēts, atkārtoti lietojot `importBoqFromBuffer`
+(izsaukts ar pašreizējā projekta `projectId`/`projectName`, jo tā ir
+obligāta funkcijas signatūra) un pēc tam paņemot tikai atgrieztā stāvokļa
+`.sections` lauku, saglabājot pārējo pašreizējā `state` nemainīgu — core
+pusē nekas nemainījās.
+
+**Nesaglabā automātiski.** Tāpat kā jebkura cita rediģēšana redaktorā,
+imports maina tikai lokālo (React) stāvokli — lietotājam jānospiež
+"Saglabāt", lai izmaiņas nonāktu IndexedDB. Tas dod iespēju pārskatīt
+importēto rezultātu pirms tas neatgriezeniski aizstāj saglabāto projektu,
+un ir konsekventi ar pārējo redaktora uzvedību (nav īpašs gadījums).
+
+**Apstiprinājuma dialogs pirms pārrakstīšanas** (`confirm()`, tāpat kā
+`ProjectList.tsx` projekta dzēšanai) — imports ir destruktīva darbība
+(aizstāj visu redaktorā redzamo saturu), tāpēc lietotājam jāapstiprina
+pirms tas notiek, ne tikai jāatsauc pēc fakta.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium):** eksportēts avota
+projekts -> importēts mērķa projektā ar citu saturu un mainītu likmi ->
+apstiprināts, ka (a) atceļot apstiprinājuma dialogu nekas nemainās, (b)
+apstiprinot dialogu vecā sadaļa tiek AIZSTĀTA (sadaļu skaits paliek 1, ne
+2), (c) likme un projekta nosaukums saglabājas nemainīgi, (d) izmaiņas
+persistē pēc "Saglabāt" + lapas pārlādes. Pārbaudīts arī, ka `exceljs`
+chunk (~946KB) svaigā lapas ielādē un projekta izveidē NETIEK pieprasīts —
+tikai pēc importa klikšķa (chunk identificēts pēc izmēra, ne faila
+nosaukuma, jo Vite hash nosaukumi nesatur "excel").
 
 ## Palaišana
 

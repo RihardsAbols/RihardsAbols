@@ -1,6 +1,6 @@
 import { summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, StorageAdapter } from "@tames-modulis/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ItemsTable } from "./ItemsTable.js";
 
 interface ProjectEditorProps {
@@ -51,7 +51,9 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const [state, setState] = useState<BoqState | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +154,41 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
     }
   };
 
+  const handleImportFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+
+    if (
+      !confirm(
+        `Importēt "${file.name}" pārrakstīs VISAS pašreizējās sadaļas un pozīcijas projektā "${state.projectName}" ` +
+          "(projekta nosaukums, likmes un citi projekti netiek skarti). Izmaiņas jāapstiprina ar \"Saglabāt\". Turpināt?",
+      )
+    ) {
+      return;
+    }
+
+    setStatus(null);
+    setImporting(true);
+    try {
+      // Same dynamic-import-only-on-use approach as export (see
+      // "Bundle izmērs / code-splitting" in CLAUDE.md) - importBoqFromBuffer
+      // pulls in exceljs, so this stays lazy.
+      const { importBoqFromBuffer } = await import("@tames-modulis/core/excel");
+      const buffer = await file.arrayBuffer();
+      const imported = await importBoqFromBuffer(buffer, state.projectId, state.projectName);
+      // Overwrite semantics: only sections are replaced. Project id, name,
+      // rates, and other metadata are kept as-is - confirmed with the user
+      // (see PROGRESS.md Session 14) rather than merging/appending sections.
+      update((s) => ({ ...s, sections: imported.sections }));
+      setStatus(`Importēts: ${imported.sections.length} sadaļas. Nospied "Saglabāt", lai saglabātu izmaiņas.`);
+    } catch (err) {
+      setStatus(`Kļūda importējot: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="project-editor">
       <div className="editor-header">
@@ -167,6 +204,16 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button onClick={handleExport} disabled={exporting}>
             {exporting ? "Sagatavo..." : "Eksportēt Excel"}
           </button>
+          <button onClick={() => importFileInputRef.current?.click()} disabled={importing}>
+            {importing ? "Importē..." : "Importēt Excel (pārrakstīt sadaļas)"}
+          </button>
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept=".xlsx"
+            hidden
+            onChange={(e) => void handleImportFileChange(e)}
+          />
         </div>
       </div>
       {status && <p className="status">{status}</p>}
