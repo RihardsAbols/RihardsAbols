@@ -65,6 +65,33 @@ describe("FileSystemStorageAdapter", () => {
     const loaded = await adapter.load("proj-2");
     expect(loaded?.projectName).toBe("Otrā versija");
   });
+
+  it("list() returns an empty array when no projects exist yet", async () => {
+    expect(await adapter.list()).toEqual([]);
+  });
+
+  it("list() returns an entry per saved project", async () => {
+    await adapter.save("proj-a", createEmptyBoqState("proj-a", "Projekts A"));
+    await adapter.save("proj-b", createEmptyBoqState("proj-b", "Projekts B"));
+
+    const listed = await adapter.list();
+    expect(listed).toHaveLength(2);
+    expect(listed.map((p) => p.projectId).sort()).toEqual(["proj-a", "proj-b"]);
+    expect(listed.find((p) => p.projectId === "proj-a")?.projectName).toBe("Projekts A");
+  });
+
+  it("delete() removes a saved project so it no longer loads or lists", async () => {
+    await adapter.save("proj-c", createEmptyBoqState("proj-c", "Dzēšamais projekts"));
+
+    await adapter.delete("proj-c");
+
+    expect(await adapter.load("proj-c")).toBeNull();
+    expect(await adapter.list()).toEqual([]);
+  });
+
+  it("delete() is idempotent for a project that never existed", async () => {
+    await expect(adapter.delete("does-not-exist")).resolves.toBeUndefined();
+  });
 });
 
 describe("migrateToCurrent", () => {

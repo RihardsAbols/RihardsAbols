@@ -138,19 +138,59 @@ lietojams uzreiz neatkarīgi no tā.
 - ⚠️ LibreOffice recalc nav apstiprinājis formulas šajā vidē (skat. augšā) —
   ja nākamajā sesijā ir pieejams strādājošs `soffice`, vērts atkārtot pārbaudi.
 
+## Sesija 8: Projektu saraksts / CRUD virs StorageAdapter — ✅ pabeigts
+
+**Uzdevums:** API līmenis projektu izveidei/uzskaitei/labošanai/dzēšanai,
+nevis tikai viena zināma projekta save/load.
+
+**Lēmums:** `StorageAdapter` interfeisam pievienotas divas jaunas metodes
+(`list()`, `delete()`) blakus esošajām `save()`/`load()` — tās ir
+fundamentāli glabāšanas primitīvi, ko atbalstīs arī nākotnes IndexedDB
+adapteris. Virs tā izveidots plāns `ProjectService` slānis ar CRUD
+funkcijām, kas strādā pret jebkuru `StorageAdapter`, nevis tikai
+`FileSystemStorageAdapter` — tas ļauj testēt CRUD loģiku ar vienkāršu
+in-memory adapteri, neatkarīgi no faila sistēmas.
+
+**Implementēts:**
+- `src/storage/StorageAdapter.ts` — pievienots `ProjectListEntry` tips
+  (`projectId`, `projectName`, `updatedAt`) un `list()`/`delete()` metodes.
+  `delete()` dokumentēts kā idempotents (dzēšot neeksistējošu projektu,
+  kļūda netiek mesta).
+- `src/storage/adapters/FileSystemStorageAdapter.ts` — `list()` uzskaita
+  apakšdirektorijas zem `data/projects/`, ielādē katru (ar migrāciju), lai
+  iegūtu `projectName`/`updatedAt`; `delete()` dzēš visu projekta
+  direktoriju (`rm(..., { recursive: true, force: true })`).
+- `src/projects/ProjectService.ts` — `createProject` (ģenerē `projectId`
+  ar `node:crypto` `randomUUID`, izveido tukšu projektu, saglabā),
+  `listProjects`, `getProject`, `updateProject` (ielādē, pielieto
+  `updater(state) => state` funkciju, pats atjaunina `updatedAt`, saglabā;
+  met `ProjectNotFoundError`, ja projekta nav), `deleteProject`.
+- `test/storage.test.ts` — papildināts ar 5 testiem `list()`/`delete()`
+  adapterim (tukšs saraksts, saraksts ar vairākiem projektiem, dzēšana,
+  idempotenta dzēšana neeksistējošam projektam).
+- `test/ProjectService.test.ts` — jauns, 7 testi pret `InMemoryStorageAdapter`
+  test dubultnieku: izveide ar unikālu ID, saraksts, `getProject` uz
+  neeksistējošu ID, `updateProject` atjaunina saturu un `updatedAt` (bet ne
+  `createdAt`) un met kļūdu neeksistējošam projektam, `deleteProject`.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Visi testi zaļi: `npm test` — 31/31 (12 storage + 7 calculations +
+  5 excel + 7 ProjectService).
+- ✅ Typecheck tīrs (`npx tsc --noEmit`).
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **Projektu saraksts / CRUD virs `StorageAdapter`** — pirms UI, lai būtu
-   API līmenis projektu izveidei/dzēšanai, ne tikai viena projekta
-   save/load.
-2. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
+1. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
    fails, importēt to un salīdzināt rezultātu, lai apstiprinātu, ka
    `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt ar reālo formātu
    (pašlaik pārbaudīts tikai pret SKILL.md dokumentāciju, ne pret reālu failu).
-3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
+2. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
+3. **Brauzera UI un IndexedDB adapteris** (Sesija 7+ plānā minētais) —
+   tagad, kad ir gan datu modelis, gan aprēķini, gan CRUD, iespējams, ir
+   pienācis laiks sākt UI.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

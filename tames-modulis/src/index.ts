@@ -6,9 +6,17 @@ export {
   DEFAULT_OVERHEAD_RATE,
   DEFAULT_PROFIT_RATE,
 } from "./models/boq.js";
-export type { StorageAdapter } from "./storage/StorageAdapter.js";
+export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";
 export { FileSystemStorageAdapter } from "./storage/adapters/FileSystemStorageAdapter.js";
 export { migrateToCurrent, UnsupportedSchemaVersionError } from "./storage/migrations/index.js";
+export {
+  createProject,
+  listProjects,
+  getProject,
+  updateProject,
+  deleteProject,
+  ProjectNotFoundError,
+} from "./projects/ProjectService.js";
 export type { BoqItemCosts, BoqSectionSummary, BoqSummary } from "./calculations/boq.js";
 export {
   round2,

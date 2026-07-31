@@ -8,13 +8,21 @@ tā uzbūvētu brauzera saskarni.
 ## Struktūra
 
 - `src/models/boq.ts` — datu modelis (`BoqState`, `BoqSection`, `BoqItem`).
-- `src/storage/StorageAdapter.ts` — glabāšanas saskarne (`save`/`load`), lai
-  glabāšanas mehānismu varētu nomainīt (fails -> IndexedDB) nemainot
-  pārējo kodu.
+- `src/storage/StorageAdapter.ts` — glabāšanas saskarne
+  (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
+  (fails -> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
+  dzēšot neeksistējošu projektu, kļūda netiek mesta.
 - `src/storage/adapters/FileSystemStorageAdapter.ts` — pašreizējā
   implementācija: JSON fails `data/projects/<projectId>/boq-state.json`.
   Raksta caur pagaidu failu + `rename`, lai avārijas gadījumā fails
-  nepaliktu pusceļā pierakstīts.
+  nepaliktu pusceļā pierakstīts. `list()` uzskaita apakšdirektorijas zem
+  `data/projects/` un ielādē katru, lai iegūtu `projectName`/`updatedAt`.
+- `src/projects/ProjectService.ts` — CRUD virs `StorageAdapter`:
+  `createProject` (ģenerē `projectId` ar `randomUUID`, izveido tukšu
+  projektu, saglabā), `listProjects`, `getProject` (`null`, ja nav),
+  `updateProject` (ielādē, pielieto `updater` funkciju, pats atjaunina
+  `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
+  `deleteProject`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
   Pašreiz `v1 -> v2 -> v3`, `migrateToCurrent` atbalsta pakāpenisku
   migrāciju pievienošanu arī turpmāk.
@@ -39,7 +47,8 @@ tā uzbūvētu brauzera saskarni.
     tās vienmēr pārrēķina `calculations/boq.ts`, lai nebūtu divu patiesības
     avotu.
 - `test/` — vitest testi (glabāšanas round-trip, migrāciju stubs, aprēķini,
-  Excel eksports/imports round-trip un imports no "svešas" darblapas).
+  Excel eksports/imports round-trip un imports no "svešas" darblapas,
+  `ProjectService` CRUD pret in-memory `StorageAdapter`).
 
 ## Lēmumi
 
@@ -75,6 +84,13 @@ tā uzbūvētu brauzera saskarni.
   bezzudumu glabāšanai turpina izmantot `StorageAdapter`/JSON — Excel ir
   cilvēkiem lasāms/rediģējams un savietojams ar citiem rīkiem formāts, nevis
   primārais glabātuve.
+- **`ProjectService` ir plāns slānis virs `StorageAdapter`**, nevis atsevišķa
+  datu piekļuves klase ar savu stāvokli — tas ļauj testēt CRUD loģiku pret
+  jebkuru `StorageAdapter` implementāciju (testos izmantots vienkāršs
+  in-memory adapteris) neatkarīgi no faila sistēmas.
+- **`projectId` tiek ģenerēts ar `randomUUID()`** `createProject` iekšienē,
+  nevis atstāts izsaucēja ziņā — lai novērstu nejaušas ID sadursmes un lai
+  saukšanas puse neuztraucas par unikalitāti.
 
 ## Palaišana
 
