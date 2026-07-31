@@ -51,7 +51,7 @@ function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, sectio
   const headers: Array<[number, string]> = [
     [TAME_COLUMNS.nrPk, "Nr.p.k."],
     [TAME_COLUMNS.name, "Būvdarbu nosaukums"],
-    [TAME_COLUMNS.unit, "Mērv."],
+    [TAME_COLUMNS.unit, "Mērvienība"],
     [TAME_COLUMNS.quantity, "Daudzums"],
     [TAME_COLUMNS.unitLabor, "Darba alga"],
     [TAME_COLUMNS.unitMaterials, "Materiāli"],

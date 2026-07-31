@@ -35,10 +35,17 @@ Npm workspace ar divām pakotnēm:
 - `src/excel/` — Excel imports/eksports. **Nav daļa no universālā
   `src/index.ts` barela** (skat. zemāk) — pieejams caur
   `@tames-modulis/core/excel` (`src/excel/index.ts`).
-  - `columns.ts` — `TAME_COLUMNS` (Līguma tāmes kolonnu karte) un
-    `KNOWN_UNITS` (mērvienību saraksts datu rindu atpazīšanai), abi tieši
-    pārņemti no `izpildes-akts-validacija` skill dokumentācijas, lai formāti
-    sakristu.
+  - `columns.ts` — `TAME_COLUMNS` (kolonnu karte, ko **raksta** eksports),
+    `KNOWN_UNITS` (kanoniskais mērvienību saraksts) un `normalizeUnit`
+    (attīra reālu failu variantus — galotnes punktu/komatu, Unicode
+    augšraksta cipariem `m²`/`m³` — pirms salīdzināšanas ar `KNOWN_UNITS`).
+    Sarakstu papildina gan `izpildes-akts-validacija` skill dokumentācija,
+    gan reāla 53-lapu Līguma tāmes faila pilna mērvienību apsekošana
+    (skat. PROGRESS.md, Sesija 12).
+  - `headerDetection.ts` — `detectImportColumns`: **importam** kolonnas
+    atrod pēc galvenes teksta (nevis fiksētas pozīcijas kā `TAME_COLUMNS`,
+    ko lieto tikai eksports) — skat. "Kolonnu noteikšana pēc galvenes
+    teksta" zemāk.
   - `export.ts` — `exportBoqToWorkbook`/`exportBoqToBuffer`: viena darblapa
     (`KOPSAVILKUMS`) ar pieņēmumiem (likmes) un projekta kopsavilkumu, un pa
     darblapai katrai sadaļai ar pozīcijām. Šūnas raksta ar **formulām**
@@ -46,12 +53,11 @@ Npm workspace ar divām pakotnēm:
     rāda pareizas vērtības uzreiz, pat ja neviens neatver to Excel/LibreOffice.
     `exportBoqToBuffer` atgriež `ArrayBuffer` (nevis Node `Buffer`), lai
     strādātu arī brauzerī.
-  - `import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`: datu rindas
-    atpazīst pēc mērvienības kolonnas (nevis fiksētas rindas numura), tāpēc
-    var lasīt gan pašu ģenerētus failus, gan reālus Līguma tāmes failus.
-    Atvasinātās kolonnas (Vienības kopā, Kopā *) netiek lasītas atpakaļ —
-    tās vienmēr pārrēķina `calculations/boq.ts`, lai nebūtu divu patiesības
-    avotu.
+  - `import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`: kolonnas
+    nosaka `detectImportColumns` (galvenes teksts), datu rindas atpazīst pēc
+    mērvienības kolonnas (nevis rindas numura). Atvasinātās kolonnas
+    (Vienības kopā, Kopā *) netiek lasītas atpakaļ — tās vienmēr pārrēķina
+    `calculations/boq.ts`, lai nebūtu divu patiesības avotu.
 - `test/` — vitest testi (glabāšanas round-trip, migrāciju stubs, aprēķini,
   Excel eksports/imports round-trip un imports no "svešas" darblapas,
   `ProjectService` CRUD pret in-memory `StorageAdapter`).
@@ -175,6 +181,60 @@ no ~1098KB uz ~155KB (49.9KB gzip); `exceljs` tagad ir atsevišķs ~945KB
 chunk, kas Playwright testā apstiprināti netiek pieprasīts sākotnējā lapas
 ielādē — tikai pēc "Eksportēt Excel" klikšķa. Eksportētais fails joprojām
 derīgs (pārbaudīts ar `openpyxl`).
+
+### Kolonnu noteikšana pēc galvenes teksta (import)
+
+Pārbaudot importu pret reālu 53-lapu Latvijas būvniecības tāmes failu
+(VELVE tipa eksports, ~15M€ slimnīcas projekts), izrādījās, ka
+`TAME_COLUMNS` (fiksētas kolonnu pozīcijas) neatbilst reāliem failiem —
+**imports atgrieza 0 sadaļu, 0 pozīciju**. Reālajā failā papildu kolonnas
+(piem., daudzstāvu/daudzēku projektiem — daudzuma sadalījums pa korpusiem)
+tiek ievietotas starp "Mērvienība" un "Daudzums", nobīdot visu, kas seko,
+un šī nobīde atšķiras pat starp vienas darbgrāmatas lapām atkarībā no tā,
+vai konkrētajai lapai ir šāds papildu bloks.
+
+**Risinājums:** `headerDetection.ts`'s `detectImportColumns` importam
+kolonnas atrod, meklējot galvenes tekstu ("Mērvienība", "Daudzums",
+"Būvdarbu nosaukums", "Darba alga", "Materiāli"/"būvizstrādājumi",
+"Mehānismi", "Nr. p.k.") nevis pieņemot fiksētu pozīciju. `TAME_COLUMNS`
+paliek nemainīgs — to joprojām lieto tikai eksports (rakstot zināmā
+formātā), tikai imports vairs uz to nepaļaujas.
+
+**Divas reālas kļūdas atrastas un izlabotas šī darba gaitā** (ne tikai
+hipotētiskas):
+1. Mūsu pašu eksports rakstīja saīsinājumu "Mērv." nevis pilnu
+   "Mērvienība" — pēc pārejas uz galvenes-teksta noteikšanu tas nozīmēja,
+   ka pat PAŠU ĢENERĒTIE faili vairs neimportējās. Izlabots, eksports
+   tagad raksta "Mērvienība".
+2. Reālā failā katrā lapā ir plaša apvienota (`merge`) instrukciju rinda
+   ("(būvdarbu veids vai konstruktīvā elementa nosaukums)"), kas nejauši
+   satur gan "būvdarbu", gan "nosaukums" (tikai ne blakus). exceljs katrai
+   apvienotās šūnas kolonnai (ne tikai enkuram) atgriež to pašu vērtību,
+   tāpēc "abi vārdi jebkurā vietā" pārbaude nepareizi sasaistīja "name"
+   lauku ar 1. kolonnu (pirms sasniedza reālo galveni). Izlabots divējādi:
+   (a) "name" pārbaude tagad prasa vārdus tieši blakus (`"būvdarbunosaukum"`
+   kā viena apakšvirkne), (b) galvenes skenēšana tagad izlaiž jebkuras
+   apvienotās šūnas, kas nav pati enkurs (`cell.isMerged && cell.master !==
+   cell`) — vispārīgs labojums pret šo kļūdu klasi, ne tikai šo vienu
+   gadījumu.
+
+**Rezultāts pēc labojumiem (pārbaudīts pret reālo failu):** 47 no 53
+lapām atpazītas kā datu lapas (6 izlaistas — satura rādītājs un
+kopsavilkuma lapas bez "Mērvienība" galvenes vispār, pareizi), 12876
+pozīcijas importētas. Izlases pārbaude: `DEM` lapas aprēķinātā tiešo
+izmaksu summa (`calculateSectionDirectTotal`) sakrita ar pašas tāmes
+"Tāmes izmaksas, eiro" šūnu līdz santīmam (63491.88 abās); citu lapu
+starpība bija ≤0.02€ (avota faila pašas noapaļošanas dēļ, ne mūsu kļūda).
+Pilns imports arī manuāli pārbaudīts caur reālu UI (Playwright): imports +
+render ~26.5s, saglabāšana IndexedDB ~6.5s — strādā, bet lēni (skat.
+PROGRESS.md par veiktspējas ierobežojumu ar lielu datu apjomu).
+
+**Mērvienību saraksts paplašināts** ar reāli novērotiem variantiem, kas
+SKILL.md dokumentācijā nebija minēti: `pāris`, `vieta`, `ltr`, `objekts`,
+`litri`, `kompl`, `t.m`, `iepak`, `l`, `k-ts`, `maš/st`, `ēka`, `ha`, plus
+`normalizeUnit` apstrādā galotnes punktus/komatus un Unicode
+augšraksta ciparus (`m²`→`m2`, `m³`→`m3`) tā vietā, lai katru variantu
+uzskaitītu atsevišķi.
 
 ## Palaišana
 

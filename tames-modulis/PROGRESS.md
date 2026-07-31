@@ -331,23 +331,110 @@ zemāk NĀKAMAIS UZDEVUMS, ja tas kādreiz kļūst vajadzīgs).
 - ✅ Pilns imports-caur-UI ceļš manuāli pārbaudīts ar Playwright, ieskaitot
   code-splitting uzvedību un datu noturību pēc pārlādes.
 
+## Sesija 12: Reāla Līguma tāmes faila pārbaude — ✅ pabeigts
+
+**Uzdevums:** pārbaudīt importu pret īstu `.xlsx` failu, nevis tikai pašu
+ģenerētiem paraugiem.
+
+**Lietotājs sniedza reālu failu:** 53 lapu, 4.3MB VELVE tipa būvniecības
+tāme ("Paula Stradiņa klīniskās universitātes slimnīcas A korpusa
+jaunbūve", ~15M€ projekts).
+
+**Rezultāts (pirms labojumiem): imports atgrieza 0 sadaļas, 0 pozīcijas.**
+Fiksēto kolonnu pieņēmums (`TAME_COLUMNS`) neatbilda reālajam failam —
+daudzēku/daudzstāvu projektu lapās starp "Mērvienība" un "Daudzums" ir
+ievietots papildu daudzuma-sadalījuma bloks (pa korpusiem), kas nobīda
+visu turpmāko kolonnu pozīciju, un šī nobīde atšķiras pat starp vienas
+darbgrāmatas lapām.
+
+**Lēmums (apstiprināts ar lietotāju):** ieviesta kolonnu noteikšana pēc
+galvenes teksta (`headerDetection.ts`'s `detectImportColumns`) tā vietā,
+lai paļautos uz fiksētām pozīcijām. `TAME_COLUMNS` paliek nemainīgs
+eksportam (kur mēs paši kontrolējam izkārtojumu); imports vairs uz to
+nepaļaujas.
+
+**Implementēts:**
+- `src/excel/headerDetection.ts` — jauns. `detectImportColumns` skenē
+  pirmās 50 rindas, meklējot 7 importam vajadzīgo lauku galvenes tekstu
+  (Nr.p.k., Būvdarbu nosaukums, Mērvienība, Daudzums, Darba alga,
+  Materiāli/būvizstrādājumi, Mehānismi). Atgriež `null`, ja kāds lauks
+  nav atrodams — tāda lapa tiek izlaista (piem. satura rādītājs).
+- `src/excel/columns.ts` — pievienots `normalizeUnit` (attīra galotnes
+  punktus/komatus, Unicode augšraksta ciparus `m²`/`m³`), un `KNOWN_UNITS`
+  papildināts ar reāli novērotiem variantiem (`pāris`, `vieta`, `ltr`,
+  `objekts`, `litri`, `kompl`, `t.m`, `iepak`, `l`, `k-ts`, `maš/st`,
+  `ēka`, `ha`) — iegūti, apsekojot VISU mērvienību kolonnu VISĀS 47 datu
+  lapās reālajā failā, nevis uzminēti.
+- `src/excel/import.ts` — pārrakstīts, lai izmantotu `detectImportColumns`
+  fiksēto `TAME_COLUMNS` vietā.
+
+**Divas reālas kļūdas atrastas un izlabotas ieviešanas gaitā** (nevis tikai
+teorētiskas):
+1. **Pašu eksports pārstāja strādāt.** Eksports rakstīja saīsinājumu
+   "Mērv.", bet jaunā noteikšana meklē "Mērvienība" — pēc pārejas pat
+   PAŠU ĢENERĒTIE faili vairs neimportējās (4 esošie testi kļuva sarkani).
+   Izlabots: eksports tagad raksta pilnu "Mērvienība".
+2. **Apvienota (`merge`) instrukciju rinda maldināja "nosaukuma" lauku.**
+   Reālajā failā katrai lapai ir plaša apvienotā šūna
+   "(būvdarbu veids vai konstruktīvā elementa nosaukums)", kas satur gan
+   "būvdarbu", gan "nosaukums" (tikai ne blakus). exceljs katrai
+   apvienotās šūnas kolonnai atgriež to pašu vērtību, tāpēc sākotnējā
+   "abi vārdi jebkurā vietā" pārbaude piesaistīja "name" lauku 1. kolonnai
+   (pirms sasniedza reālo galveni) — katras pozīcijas apraksts kļuva par
+   tās Nr.p.k. vērtību. Izlabots divējādi: (a) "name" pārbaude tagad
+   prasa vārdus tieši blakus, (b) galvenes skenēšana izlaiž jebkuru
+   apvienoto šūnu, kas nav pati enkurs — vispārīgs labojums, ne tikai
+   šim vienam gadījumam.
+
+**Manuāla pārbaude pret reālo failu (pēc labojumiem):**
+- 47 no 53 lapām atpazītas kā datu lapas; 6 izlaistas (satura rādītājs +
+  5 kopsavilkuma lapas) — pareizi, tām nav "Mērvienība" galvenes vispār.
+- **12876 pozīcijas kopā** importētas.
+- Izlases pārbaude pret avota datiem (DEM, ZD, LIFT, MEB lapas) — kods,
+  apraksts, mērvienība, daudzums, darba alga/materiāli/mehānismi visi
+  precīzi sakrita ar Excel faila jēlajām šūnu vērtībām.
+- `calculateSectionDirectTotal(DEM)` = 63491.88 — precīzi sakrita ar
+  pašas tāmes "Tāmes izmaksas, eiro" šūnu (Z14). Citām lapām atšķirība
+  bija ≤0.02€ (avota faila pašas starprindu noapaļošanas dēļ).
+- Plaša pārbaude visās 47 lapās/12876 pozīcijās — tikai 2 aizdomīgi
+  ieraksti atrasti, abi izrādījās derīgi īsi apraksti ("TV", cenas 0),
+  nevis kļūdas.
+- **Pilns imports caur reālu UI** (Playwright, ne tikai Node skripts):
+  imports + render ~26.5s, saglabāšana IndexedDB ~6.5s, kopsavilkums
+  pareizs (81.9M€ tiešās izmaksas, 12%/5% uzcenojums, 21% PVN — visa
+  aritmētika sakrīt). Nekrīt, bet lēni — skat. zemāk.
+
+**Negaidīts atklājums (veiktspēja):** šis fails arī bija de facto
+"liela datu apjoma" pārbaude (47 sadaļas, 12876 pozīcijas — katra sava
+rinda ar 7 ievades laukiem DOM) — kas iepriekš bija atzīmēts kā
+nepārbaudīts risks. Imports+render UI ~26.5s, saglabāšana ~6.5s. Strādā,
+nesabrūk, bet nav ātri — `ProjectEditor` renderē visas pozīcijas uzreiz,
+bez virtualizācijas. Nav labots šajā sesijā (nebija uzdevums), bet tagad
+ir konkrēti skaitļi, nevis minējums.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Visi core testi zaļi: `npm test` — 39/39 (12 storage + 7 calculations
+  + 7 ProjectService + 13 excel, ieskaitot jaunu regresijas testu tieši šai
+  apvienoto-šūnu kļūdai).
+- ✅ Typecheck tīrs abās pakotnēs.
+- ✅ Reāls fails manuāli pārbaudīts gan Node skriptā, gan caur UI
+  (Playwright), ar konkrētiem skaitliskiem salīdzinājumiem pret avota datiem.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **Reāla Līguma tāmes parauga pārbaude** — ja lietotājam ir īsts `.xlsx`
-   fails (nevis pašu ģenerēts), importēt to un salīdzināt rezultātu, lai
-   apstiprinātu, ka `KNOWN_UNITS`/`TAME_COLUMNS` pieņēmumi patiešām sakrīt
-   ar reālo formātu.
+1. **UI veiktspēja ar lielu datu apjomu** — tagad apstiprināts reāls
+   problēma (~26.5s importam+renderam ar 12876 pozīcijām). Iespējamie
+   risinājumi: rindu/sadaļu virtualizācija, "lazy" sadaļu paplašināšana
+   (sākumā sakļautas), vai lapošana pa sadaļām.
 2. **"Importēt esošā projektā" (papildināt/pārrakstīt)** — pašreiz imports
    vienmēr izveido jaunu projektu; ja vajag arī iespēju ievest `.xlsx`
-   datus jau atvērtā projektā (piem. no `ProjectEditor.tsx`), tas
-   jāapstiprina, jo nav skaidrs, vai tam jāpapildina vai jāpārraksta
-   esošās sadaļas.
+   datus jau atvērtā projektā, jāapstiprina papildināšanas/pārrakstīšanas
+   semantika.
 3. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
    likmes pa pozīcijām), ja tas ir reāls prasību lauks.
-4. **Favicon** un **veiktspējas pārbaude ar lielu datu apjomu** (daudz
-   sadaļu/pozīciju) — abi joprojām neaizskarti no iepriekšējām sesijām.
+4. **Favicon** — joprojām neaizskarts, nekritiski.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

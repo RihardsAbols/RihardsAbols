@@ -1,20 +1,26 @@
 import ExcelJS from "exceljs";
 import { createEmptyBoqState, type BoqItem, type BoqSection, type BoqState } from "../models/boq.js";
 import { cellNumber, cellText } from "./cellValue.js";
-import { KNOWN_UNITS, TAME_COLUMNS } from "./columns.js";
+import { KNOWN_UNITS, normalizeUnit } from "./columns.js";
+import { detectImportColumns } from "./headerDetection.js";
 
 /**
  * Reads BOQ sections out of an arbitrary Līguma tāme-shaped workbook — either
- * one produced by exportBoqToWorkbook, or a real-world file matching the
- * column layout documented in the izpildes-akts-validacija skill.
+ * one produced by exportBoqToWorkbook, or a real-world file. Columns are
+ * located per-sheet by header text (detectImportColumns), not by fixed
+ * position — verified against a real 53-sheet construction budget where
+ * per-building quantity-breakdown columns shift everything after
+ * "Mērvienība" for some sheets but not others, which a fixed-column map
+ * can't handle.
  *
- * Data rows are identified by the mērvienība column matching a known unit
- * (same heuristic as that skill's compare_acts.py), not by row position, so
- * this doesn't depend on a fixed header size. Sheets with no recognizable
- * data rows (e.g. a KOPSAVILKUMS summary tab) are skipped rather than
- * imported as empty sections. Derived columns (Vienības kopā, Kopā *) are
- * not read back — they're recomputed from the unit costs instead of trusted
- * as stored values, since this module is the source of truth for them.
+ * Within a recognized sheet, data rows are identified by the mērvienība
+ * column matching a known unit (same heuristic as izpildes-akts-validacija's
+ * compare_acts.py), not by row position. Sheets where no header columns can
+ * be found at all (e.g. a table-of-contents or rollup summary tab) are
+ * skipped entirely, not imported as empty sections. Derived columns
+ * (Vienības kopā, Kopā *) are not read back — they're recomputed from the
+ * unit costs instead of trusted as stored values, since this module is the
+ * source of truth for them.
  *
  * Sheet name becomes the section id/name and freshly generated ids are
  * assigned to items, since Excel carries no equivalent of our internal ids —
@@ -28,23 +34,28 @@ export function importBoqFromWorkbook(
   const sections: BoqSection[] = [];
 
   workbook.eachSheet((sheet) => {
+    const columns = detectImportColumns(sheet);
+    if (!columns) {
+      return;
+    }
+
     const items: BoqItem[] = [];
 
     sheet.eachRow((row) => {
-      const unitText = cellText(row.getCell(TAME_COLUMNS.unit)).trim();
-      if (!KNOWN_UNITS.has(unitText.toLowerCase())) {
+      const unitText = cellText(row.getCell(columns.unit)).trim();
+      if (!KNOWN_UNITS.has(normalizeUnit(unitText))) {
         return;
       }
 
       items.push({
         id: crypto.randomUUID(),
-        code: cellText(row.getCell(TAME_COLUMNS.nrPk)).trim(),
-        description: cellText(row.getCell(TAME_COLUMNS.name)).trim(),
+        code: cellText(row.getCell(columns.nrPk)).trim(),
+        description: cellText(row.getCell(columns.name)).trim(),
         unit: unitText,
-        quantity: cellNumber(row.getCell(TAME_COLUMNS.quantity)),
-        unitLaborCost: cellNumber(row.getCell(TAME_COLUMNS.unitLabor)),
-        unitMaterialsCost: cellNumber(row.getCell(TAME_COLUMNS.unitMaterials)),
-        unitMechanismsCost: cellNumber(row.getCell(TAME_COLUMNS.unitMechanisms)),
+        quantity: cellNumber(row.getCell(columns.quantity)),
+        unitLaborCost: cellNumber(row.getCell(columns.unitLabor)),
+        unitMaterialsCost: cellNumber(row.getCell(columns.unitMaterials)),
+        unitMechanismsCost: cellNumber(row.getCell(columns.unitMechanisms)),
       });
     });
 
