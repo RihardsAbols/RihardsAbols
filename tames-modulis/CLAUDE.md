@@ -7,16 +7,31 @@
 - Bez admin tiesībām, bez instalatora, bez build/bundler soļa kodola loģikai.
 - Testi: `node --test` (izmantot pilno `node.exe` ceļu skriptos/dokumentācijā uz lietotāja mašīnas).
 
-## Excel bibliotēkas izvēle: `exceljs`, nevis `xlsx` (SheetJS)
-Izvēlēts `exceljs` (nevis `xlsx`/SheetJS), pamatojums:
+## Excel bibliotēkas: `exceljs` (primārā) + `xlsx`/SheetJS (legacy .xls fallback)
+Sesijā 1 izvēlēts `exceljs` pār `xlsx`/SheetJS priekš `.xlsx`:
 - `xlsx` npm pakotnes community versija ir iesaldēta pie novecojušas versijas (0.18.x); aktīvā
-  attīstība pārcelta uz izstrādātāju pašu CDN ārpus npm reģistra, kas apgrūtina uzticamu,
-  reproducējamu instalāciju bez admin tiesībām/interneta piekļuves nenoteiktībām.
-- `exceljs` ir MIT licencēts, aktīvi uzturēts tieši npm reģistrā, bez natīvām atkarībām — der
-  portablajam Node.js iestatījumam.
-- `exceljs` tieši atbalsta izcache-otu formulu vērtību nolasīšanu (`cell.result` pēc
-  `workbook.xlsx.readFile()`), kas tieši nepieciešams §1 no `TAMES_MODULE_SPEC.md`
-  ("Excel fails jāatver ar cached-values pēc LibreOffice recalc, ne tikai formulu virknes").
+  attīstība pārcelta uz izstrādātāju pašu CDN ārpus npm reģistra.
+- `exceljs` ir MIT licencēts, aktīvi uzturēts tieši npm reģistrā, bez natīvām atkarībām.
+
+**Sesijā 2 precizēts (reāli paraugfaili atklāja robežu)**: viens no diviem reālajiem paraugfailiem
+("C8-2 Pile BOQ") izrādījās vecais binārais `.xls` (BIFF/CDF) formāts, nevis `.xlsx`. `exceljs`
+**principiāli nevar** lasīt `.xls` (tikai OOXML/zip formātu — `.xls` mēģinājums dod
+"Can't find end of central directory : is this a zip file?"). LibreOffice `--headless
+--convert-to xlsx` konvertācija šim konkrētajam failam arī neizdevās ("source file could not be
+loaded", pārbaudīts ar tīru profilu). SheetJS `xlsx` gan lasa šo failu tieši, bez ārējiem
+procesiem. Tāpēc:
+- **`.xlsx`** → `exceljs` (kā lemts Sesijā 1; formulu cached-values pieejami caur formulas
+  objektu `.result`, kur tie ir korekti aprēķināti avotfailā).
+- **`.xls`** (legacy binārais) → `xlsx`/SheetJS kā fallback (`src/parser/loadWorkbook.js`
+  izvēlas bibliotēku pēc faila paplašinājuma un abstrahē abas aiz vienotas
+  `{ sheets: [{ name, getRows(maxRow) }] }` saskarnes).
+- **Atklāts, vēl neatrisināts jautājums Sesijai 3+**: abu paraugfailu formulu cached-values
+  daļēji ir novecojuši/nulle (piem. KO lapas starplapu formulas dod `undefined`/`0`, nevis
+  reālo summu) — tātad TAMES_MODULE_SPEC.md §1 minētais "LibreOffice recalc pirms nolasīšanas"
+  solis būs jārisina Sesijā 3 (rindu ekstrakcija), UN jāņem vērā, ka LibreOffice recalc/convert
+  var neizdoties tieši `.xls` failiem (skat. augstāk) — iespējams risinājums: pārrēķināt
+  formulas Node pusē (nevis paļauties uz cached-values), vai izmantot LibreOffice makro ar
+  atšķirīgu importa filtru. Nav vēl izlemts — jāapspriež Sesijā 3.
 
 ## Definition of Done (katram uzdevumam)
 - [ ] Kods uzrakstīts kā tīra, testējama funkcija atsevišķā modulī (ne monolītā UI failā).
@@ -28,6 +43,8 @@ Izvēlēts `exceljs` (nevis `xlsx`/SheetJS), pamatojums:
 Skat. `TAMES_MODULE_SPEC.md` §4 — obligāts katras sesijas beigās.
 
 ## Nākamais solis
-Sesija 2 — Excel struktūras atpazīšana: `src/parser/detectSheetType.js` +
-`src/parser/detectHeaderRow.js`. Skat. `TAMES_MODULE_SPEC.md` §3, Sesija 2, "Gatavs, kad" kritērijs.
-Nesākt bez lietotāja apstiprinājuma, ka šis solis joprojām aktuāls.
+Sesija 3 — Rindu ekstrakcija un kanoniskais modelis: `src/parser/extractLineItems.js`.
+Vispirms jārisina atklātais formulu cached-values jautājums (skat. augstāk "Excel bibliotēkas"
+sadaļu) — pirms rindu ekstrakcijas jāizlemj, kā iegūt korektas (nevis novecojušas/nulles)
+formulu vērtības abiem failu formātiem. Skat. `TAMES_MODULE_SPEC.md` §3, Sesija 3, "Gatavs, kad"
+kritērijs. Nesākt bez lietotāja apstiprinājuma, ka šis solis joprojām aktuāls.
