@@ -508,6 +508,11 @@ body {
   gap: 1rem;
 }
 
+.execution-records-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .execution-record-form {
   background: #fafafa;
   border: 1px solid #eee;

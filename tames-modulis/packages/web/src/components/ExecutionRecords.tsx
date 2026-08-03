@@ -1,6 +1,8 @@
 import { createExecutionRecord, deriveCurrentSections } from "@tames-modulis/core";
 import type { BoqState, ExecutionRecordEntry } from "@tames-modulis/core";
-import { useState } from "react";
+import type { ParsedExecutionActSheet } from "@tames-modulis/core/excel";
+import { useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { ExecutionEntryTable } from "./ExecutionEntryTable.js";
 
 interface ExecutionRecordsProps {
@@ -22,6 +24,15 @@ function emptyRecordForm(): RecordFormState {
   return { period: "", date: todayIso(), approvedBy: "" };
 }
 
+/** Module shape from the dynamically-imported "@tames-modulis/core/excel" entry point (see "Bundle izmērs / code-splitting" in CLAUDE.md) - `typeof import(...)` is a type-only reference, it doesn't itself trigger the runtime import. */
+type ExcelModule = typeof import("@tames-modulis/core/excel");
+
+interface ActImportState {
+  sheets: ParsedExecutionActSheet[];
+  mapping: Record<string, string | null>;
+  recordForm: RecordFormState;
+}
+
 /**
  * "Izpildes akti" cilne - katra atskaites perioda (piem. mēneša) izpildīto un
  * inženiera apstiprināto daudzumu ievade, un vēsture. Rāda TIKAI, kad
@@ -41,6 +52,11 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [recordForm, setRecordForm] = useState<RecordFormState>(emptyRecordForm());
   const [entryQuantities, setEntryQuantities] = useState<Record<string, string>>({});
+  const [actImport, setActImport] = useState<ActImportState | null>(null);
+  const [actImportLoading, setActImportLoading] = useState(false);
+  const [actImportError, setActImportError] = useState<string | null>(null);
+  const excelModuleRef = useRef<ExcelModule | null>(null);
+  const actFileInputRef = useRef<HTMLInputElement>(null);
 
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = deriveCurrentSections(state.sections, approvedVariationOrders);
@@ -68,10 +84,153 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
     setIsCreating(false);
   };
 
+  // Parsing/matching is derived here (not stored in state) so adjusting the
+  // sheet -> sadaļa dropdown mapping in the preview immediately recomputes
+  // matched/unmatched counts without re-parsing the file.
+  const actMatches = useMemo(() => {
+    if (!actImport || !excelModuleRef.current) return null;
+    return excelModuleRef.current.matchExecutionActToProject(actImport.sheets, currentSections, actImport.mapping);
+  }, [actImport, currentSections]);
+
+  const handleActFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+
+    setActImportError(null);
+    setActImportLoading(true);
+    try {
+      // Same dynamic-import-only-on-use approach as export/tāmes imports
+      // (see "Bundle izmērs / code-splitting" in CLAUDE.md) - parsing pulls
+      // in exceljs, so this stays lazy.
+      const mod = await import("@tames-modulis/core/excel");
+      excelModuleRef.current = mod;
+      const buffer = await file.arrayBuffer();
+      const sheets = await mod.parseExecutionActBuffer(buffer);
+      if (sheets.length === 0) {
+        setActImportError('Failā netika atrasta neviena akta lapa ar izpildi šajā periodā ("Izpildīts atskaites periodā" kolonna).');
+        return;
+      }
+      const mapping = mod.suggestSheetToSectionMapping(sheets, currentSections);
+      setActImport({ sheets, mapping, recordForm: emptyRecordForm() });
+    } catch (err) {
+      setActImportError(`Kļūda nolasot failu: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setActImportLoading(false);
+    }
+  };
+
+  const updateActMapping = (sheetName: string, sectionId: string | null) => {
+    setActImport((current) => (current ? { ...current, mapping: { ...current.mapping, [sheetName]: sectionId } } : current));
+  };
+
+  const handleConfirmActImport = () => {
+    if (!actImport || !actMatches || !actImport.recordForm.period.trim()) return;
+    const entries = actMatches.flatMap((m) => m.entries);
+    const created = { ...createExecutionRecord(actImport.recordForm), entries };
+    onUpdate((s) => ({ ...s, executionRecords: [...s.executionRecords, created] }));
+    setActImport(null);
+  };
+
+  const totalUnmatched = actMatches?.reduce((sum, m) => sum + m.unmatchedRows.length, 0) ?? 0;
+  const totalMatched = actMatches?.reduce((sum, m) => sum + m.entries.length, 0) ?? 0;
+
   return (
     <div className="execution-records">
-      {!isCreating ? (
-        <button onClick={openCreateForm}>+ Jauns izpildes akts</button>
+      {actImportError && <p className="error">{actImportError}</p>}
+      {actImport ? (
+        <div className="execution-record-form">
+          <h3>Izpildes akta imports (Excel)</h3>
+          <p className="hint">
+            Katrai akta lapai izvēlēta sadaļa pēc nosaukuma sakritības - pārbaudi/izlabo pirms apstiprināšanas. Lapas, kurām nav
+            izvēlēta sadaļa ("— izlaist —"), netiek importētas.
+          </p>
+          <div className="execution-record-form-grid">
+            <label>
+              Periods
+              <input
+                placeholder='piem. "2021-02" vai "Akts Nr. 5"'
+                value={actImport.recordForm.period}
+                onChange={(e) => setActImport((cur) => (cur ? { ...cur, recordForm: { ...cur.recordForm, period: e.target.value } } : cur))}
+              />
+            </label>
+            <label>
+              Datums
+              <input
+                type="date"
+                value={actImport.recordForm.date}
+                onChange={(e) => setActImport((cur) => (cur ? { ...cur, recordForm: { ...cur.recordForm, date: e.target.value } } : cur))}
+              />
+            </label>
+            <label>
+              Apstiprināja
+              <input
+                value={actImport.recordForm.approvedBy}
+                onChange={(e) => setActImport((cur) => (cur ? { ...cur, recordForm: { ...cur.recordForm, approvedBy: e.target.value } } : cur))}
+              />
+            </label>
+          </div>
+
+          <table className="execution-history-table">
+            <thead>
+              <tr>
+                <th>Akta lapa</th>
+                <th>Sadaļa</th>
+                <th>Sakrita</th>
+                <th>Nesakrita</th>
+              </tr>
+            </thead>
+            <tbody>
+              {actImport.sheets.map((sheet) => {
+                const match = actMatches?.find((m) => m.sheetName === sheet.sheetName);
+                return (
+                  <tr key={sheet.sheetName}>
+                    <td>
+                      {sheet.sheetName} ({sheet.rows.length})
+                    </td>
+                    <td>
+                      <select
+                        value={actImport.mapping[sheet.sheetName] ?? ""}
+                        onChange={(e) => updateActMapping(sheet.sheetName, e.target.value || null)}
+                      >
+                        <option value="">— izlaist —</option>
+                        {currentSections.map((section) => (
+                          <option key={section.id} value={section.id}>
+                            {section.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>{match?.entries.length ?? 0}</td>
+                    <td>{match?.unmatchedRows.length ?? 0}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {totalUnmatched > 0 && (
+            <p className="baseline-banner">
+              Brīdinājums: {totalUnmatched} pozīcija(s) neatrada atbilstību izvēlētajā sadaļā (nesakrīt "Nr." kods) un netiks
+              importētas.
+            </p>
+          )}
+
+          <div className="execution-record-form-actions">
+            <button onClick={handleConfirmActImport} disabled={!actImport.recordForm.period.trim() || totalMatched === 0}>
+              Apstiprināt importu ({totalMatched} pozīcijas)
+            </button>
+            <button onClick={() => setActImport(null)}>Atcelt</button>
+          </div>
+        </div>
+      ) : !isCreating ? (
+        <div className="execution-records-actions">
+          <button onClick={openCreateForm}>+ Jauns izpildes akts</button>
+          <button onClick={() => actFileInputRef.current?.click()} disabled={actImportLoading}>
+            {actImportLoading ? "Ielasa..." : "Importēt izpildes aktu (Excel)"}
+          </button>
+          <input ref={actFileInputRef} type="file" accept=".xlsx" hidden onChange={(e) => void handleActFileChange(e)} />
+        </div>
       ) : (
         <div className="execution-record-form">
           <h3>Jauns izpildes akts</h3>

@@ -1243,28 +1243,85 @@ eksports -> `openpyxl` pārbaude uz ģenerētā faila:
 - ✅ Reāla faila pilna VO + izpildes aktu plūsma pārbaudīta bez kļūdām, ar
   konkrētiem laika mērījumiem (imports ~8.4s, eksports ~4.5s).
 
+## Sesija 21: Izpildes aktu Excel imports — ✅ pabeigts
+
+**Uzdevums:** kandidāts #1 no Sesijas 20 atlikušā saraksta — lietotājs
+apstiprināja un uzreiz iesniedza reālu izpildes akta failu pārbaudei
+(PSKUS 2021-02 aktu, "Forma 3" tips, 54 darblapas).
+
+**Lēmumi (apstiprināti ar lietotāju, jautāti tieši pirms ieviešanas):**
+- Reāla izpildes akta paraugs pieejams pārbaudei šajā pašā sesijā (nevis
+  atlikts uz vēlāku sesiju).
+- Akta darblapu sasaiste ar projekta sadaļām: automātiski + priekšskata
+  apstiprinājums (nevis vienmēr manuāla).
+- Kolonnu noteikšana: sākotnēji izvēlēta fiksēta pozīcija pēc Forma Nr.2
+  (skill dokumentētā karte) kā "v1 ieteicamā" pieeja.
+
+**Reāla faila pārbaude atklāja, ka pēdējais lēmums nestrādā:** tieši tāpat
+kā Sesijā 12 ar Līguma tāmes failu, arī reālajā izpildes akta failā
+"Izpildīts atskaites periodā" kolonna atrodas DAŽĀDĀS pozīcijās dažādām
+lapām (33 vai 29, atkarībā no tā, vai konkrētās lapas izmaksu sadalījumā ir
+papildu "laika norma" apakšgrupa) — fiksēta pozīcija reāli nestrādātu 10+
+no 27 datu lapām. Pāreja uz galvenes teksta noteikšanu (tā pati pieeja, kas
+jau atrisināja identisku problēmu tāmes importam) bija TEHNISKI
+NEPIECIEŠAMA, nevis vēlreiz jautājams dizaina lēmums — ieviesta bez
+papildu apstiprinājuma cikla, dokumentēta CLAUDE.md kā šī sesijas
+konstatējums.
+
+**Negaidīts pozitīvs atklājums:** akta faila darblapu nosaukumi PRECĪZI
+sakrīt ar Līguma tāmes faila darblapu nosaukumiem (abi faili ģenerēti no
+tās pašas sistēmas) — sadaļu sasaiste varēja būt vienkārša precīza
+nosaukuma sakritība, nevis izplūdusi meklēšana, kas sākotnēji tika
+paredzēta kā nepieciešama.
+
+**Implementēts:** skat. CLAUDE.md "Izpildes aktu Excel imports (Sesija 21)"
+pilnu tehnisko aprakstu — `headerDetection.ts` paplašināts ar
+`detectExecutionActColumns` (kopīga `scanHeaderColumns` palīgfunkcija ar
+`detectImportColumns`), jauns `executionActImport.ts`
+(`parseExecutionActWorkbook`/`parseExecutionActBuffer`,
+`suggestSheetToSectionMapping`, `matchExecutionActToProject`), jauna UI
+plūsma `ExecutionRecords.tsx` ("Importēt izpildes aktu (Excel)" poga ->
+faila izvēle -> priekšskata tabula ar sadaļu sasaistes `<select>` katrai
+akta lapai un dzīvi pārrēķinātiem sakrita/nesakrita skaitiem -> apstiprināt
+-> jauns `ExecutionRecord`).
+
+**Manuāli pārbaudīts pret REĀLO PSKUS 2021-02 failu** divos līmeņos:
+1. Core līmenī (pret to pašu reālo VELVE tāmes failu, kas Sesijā 20):
+   4 akta lapas ar izpildi šajā periodā (ZD/PAM/KARK_O CIKLS/ŪK, 36 rindas
+   kopā), VISAS sasaistītas pareizi (0 nesakritušu) gan sadaļu, gan
+   pozīciju līmenī.
+2. UI līmenī (Playwright, reāls Chromium, `packages/web` dev serveris,
+   projekts sagatavots tieši IndexedDB ar apzināti nepilnīgu sadaļu, lai
+   pārbaudītu arī nesakritības ceļu): priekšskata tabula, dzīvā
+   pārrēķināšana mainot `<select>`, brīdinājuma baneris, un gala akta
+   izveide vēstures tabulā — visi skaitļi (rindu skaits, sakrita/nesakrita,
+   summa) sakrita ar sagaidāmo, konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 98/98 testi zaļi (90 + 8 jauni).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi, jaunais kods daļa no jau esošā lazy excel chunk'a).
+- ✅ Manuāli pārbaudīts pret REĀLU izpildes akta failu core UN UI līmenī.
+- ⚠️ Playwright tika instalēts tikai pagaidu pārbaudei un pēc tam noņemts
+  (`packages/web/package.json`/lock atgriezti sākotnējā stāvoklī) — projekts
+  Playwright kā pastāvīgu atkarību neiegūst.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Abi Sesijā 20 apstiprinātie uzdevumi (Izpildes akti Excel eksportā, reāla
-VELVE faila pārbaude) ir pabeigti. Atlikušie kandidāti no iepriekšējā
-saraksta (NAV apstiprināts uzdevums, jājautā lietotājam nākamās sesijas
-sākumā):
+Sesijas 20-21 apstiprinātie uzdevumi ir pabeigti. Atlikušie kandidāti no
+iepriekšējā saraksta (NAV apstiprināts uzdevums, jājautā lietotājam
+nākamās sesijas sākumā):
 
-1. **Izpildes aktu Excel imports** — Sesijā 19 apzināti atlikts (manuāla
-   ievade izvēlēta pirmajai versijai). Vai reāla lietošana rāda, ka manuāla
-   ievade lielam projektam (tūkstošiem pozīciju katru mēnesi) ir par lēnu,
-   un imports no reāla izpildes akta faila (līdzīgi
-   `izpildes-akts-validacija` skill loģikai) kļūst vajadzīgs?
-2. **Izpildes akti/VO nav rediģējami/dzēšami pēc saglabāšanas** (apzināta
+1. **Izpildes akti/VO nav rediģējami/dzēšami pēc saglabāšanas** (apzināta
    audit-trail izvēle) — vai reālā lietošanā radīsies vajadzība labot kļūdu
    akta ievadē (piem. nepareizi ievadīts skaitlis) bez jauna korekcijas
    akta veidošanas?
-3. **"Pieejamais atlikums" redzams TIKAI VO izveides formā** — vai vajag arī
+2. **"Pieejamais atlikums" redzams TIKAI VO izveides formā** — vai vajag arī
    pastāvīgu "atlikums" kolonnu/skatu galvenajā "Tāme" cilnē (vai atsevišķā
    pārskata skatā), lai redzētu visu pozīciju atlikumus vienlaicīgi, nevis
    tikai vienu pozīciju uzreiz VO formā?
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-20) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, pie kura no
+Sesijas 18-21) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, pie kura no
 augstāk numurētajiem kandidātiem (ja kāda vispār) strādāt tālāk — nevis
 pieņemt, ka viens no tiem ir automātiski nākamais uzdevums.

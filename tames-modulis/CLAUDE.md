@@ -69,7 +69,15 @@ Npm workspace ar divām pakotnēm:
   - `headerDetection.ts` — `detectImportColumns`: **importam** kolonnas
     atrod pēc galvenes teksta (nevis fiksētas pozīcijas kā `TAME_COLUMNS`,
     ko lieto tikai eksports) — skat. "Kolonnu noteikšana pēc galvenes
-    teksta" zemāk.
+    teksta" zemāk. `detectExecutionActColumns` — tas pats galvenes-teksta
+    princips izpildes akta (Forma Nr.2/Nr.3) failiem, skat. "Izpildes aktu
+    Excel imports (Sesija 21)" zemāk.
+  - `executionActImport.ts` — `parseExecutionActWorkbook`/
+    `parseExecutionActBuffer` (nolasa "šī perioda izpildīts" katrai akta
+    lapai), `suggestSheetToSectionMapping` (akta lapa -> `BoqSection` pēc
+    nosaukuma), `matchExecutionActToProject` (akta rinda -> `BoqItem` pēc
+    koda mapotajā sadaļā) — skat. "Izpildes aktu Excel imports (Sesija 21)"
+    zemāk pilnu semantiku.
   - `export.ts` — `exportBoqToWorkbook`/`exportBoqToBuffer`: viena darblapa
     (`KOPSAVILKUMS`) ar pieņēmumiem (likmes) un projekta kopsavilkumu, un pa
     darblapai katrai sadaļai ar pozīcijām. Katra lapa sākas ar projekta/
@@ -151,7 +159,8 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   diff skats) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/components/ExecutionRecords.tsx` — "Izpildes akti" cilnes saturs
   (jauna izpildes akta ievade pa sadaļām ar izpildīts/atlikums kolonnām,
-  aktu vēsture) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  aktu vēsture, izpildes akta Excel imports ar priekšskata/sasaistes soli)
+  — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/components/ExecutionEntryTable.tsx` — virtualizēta pozīciju tabula
   izpildes akta ievadei (tā pati tehnika kā `ItemsTable.tsx`, skat.
   "Pozīciju tabulas virtualizācija" un "Tāmes izmaiņu (Variation Order)
@@ -699,12 +708,13 @@ brīdinājumu, bet ļauj saglabāt — var būt leģitīmi iemesli (strīds, akt
 kļūdas labošana), un lietotne apzināti neuzņemas šķīrējtiesneša lomu.
 
 **Ievade: manuāla, nevis Excel imports** (apstiprināts ar lietotāju šai
-versijai) — `ExecutionRecords.tsx` "Izpildes akti" cilne (rāda TIKAI pēc
-bāzes iesaldēšanas, tāpat kā "Izmaiņas (VO)"): jauna akta forma (periods/
-datums/apstiprinātājs) + PA SADAĻĀM (tāpat kā "Tāme" cilne) tabula ar
-kolonnām Nr./Nosaukums/Mērv./Pašreizējais/Izpildīts līdz šim (PIRMS šī
-akta)/Šajā periodā (ievade)/**Atlikums uz nākamo periodu** (dzīvi
-pārrēķināts, rakstot) — pēdējā lieto lietotāja pieprasīts tieši šo
+versijai — Excel imports pievienots vēlāk, Sesijā 21, skat. zemāk
+"Izpildes aktu Excel imports") — `ExecutionRecords.tsx` "Izpildes akti"
+cilne (rāda TIKAI pēc bāzes iesaldēšanas, tāpat kā "Izmaiņas (VO)"): jauna
+akta forma (periods/datums/apstiprinātājs) + PA SADAĻĀM (tāpat kā "Tāme"
+cilne) tabula ar kolonnām Nr./Nosaukums/Mērv./Pašreizējais/Izpildīts līdz
+šim (PIRMS šī akta)/Šajā periodā (ievade)/**Atlikums uz nākamo periodu**
+(dzīvi pārrēķināts, rakstot) — pēdējā lieto lietotāja pieprasīts tieši šo
 formulējumu. Rindas ar `atlikums < 0` vizuāli izceltas (`.over-executed`).
 Zem tam aktu vēstures tabula (periods/datums/apstiprinātājs/pozīciju
 skaits/kopā izpildīts šajā periodā).
@@ -827,6 +837,113 @@ KOPĀ vienā rindā. Nekādu kļūdu visā plūsmā.
   sintētiskam projektam, gan REĀLAM 53-lapu/12876 pozīciju VELVE failam.
 - ✅ Reāla faila pilna VO + izpildes aktu plūsma pārbaudīta bez kļūdām, ar
   konkrētiem laika mērījumiem.
+
+#### Izpildes aktu Excel imports (Sesija 21)
+
+Sesijā 19 manuālā ievade bija apzināta izvēle "šai versijai" (skat. augšā).
+Sesijā 21 lietotājs apstiprināja Excel importu, un uzreiz sniedza reālu
+izpildes akta failu pārbaudei (PSKUS 2021-02 aktu, Forma Nr.2/Nr.3 pēc
+LBN 501-17) — kas atklāja, ka reālā izpildes akta faila kolonnu izkārtojums
+IR TIKPAT mainīgs pa lapām kā Līguma tāmes failam (Sesija 12): sākotnēji
+apstiprinātā "fiksēta pozīcija pēc Forma Nr.2" pieeja izrādījās neizmantojama
+— "Izpildīts atskaites periodā" kolonna reālajā failā atrodas kolonnā 33
+dažām lapām (DEM, ZD, PAM) un kolonnā 29 citām (KARK, EL, AVK-* u.c.),
+atkarībā no tā, vai konkrētās lapas izmaksu sadalījumā ir papildu "laika
+norma" apakšgrupa. Pāreja uz galvenes teksta noteikšanu (tā pati pieeja, kas
+jau izlaboja šo PAŠU kļūdu klasi tāmes importam) bija tehniski nepieciešama,
+nevis izvēles jautājums — īstenota bez atkārtotas jautāšanas, konsekventi ar
+jau iedibināto principu "reāla faila pārbaude nosaka pieeju".
+
+**Negaidīts pozitīvs atklājums:** reāla izpildes akta faila darblapu
+nosaukumi ("DEM", "ZD", "PAM", "KARK" u.c.) PRECĪZI SAKRĪT ar attiecīgā
+Līguma tāmes faila darblapu nosaukumiem (abi faili nāk no tās pašas
+projektu vadības sistēmas) — `BoqSection.name`/`.id` jau nāk tieši no
+tāmes `sheet.name` (skat. `import.ts`), tāpēc sadaļu sasaiste var būt
+VIENKĀRŠA precīza nosaukuma sakritība, nevis izplūdusi (fuzzy) meklēšana,
+ko sākotnēji paredzēja lietotāja apstiprinātais dizains. Fails satur arī
+"Kods" kolonnu formātā `"T:1-1, R:3"` (T=tāmes numurs, R=Nr.p.k.), bet tā
+nav aizpildīta VISĀS lapās (piem. KARK lapā tukša) — tāpēc netiek izmantota
+matching pamatā, tikai sadaļas nosaukums + pozīcijas kods (Nr.p.k.).
+
+**Jauni core moduļi** (`packages/core/src/excel/`):
+- `headerDetection.ts` — iekšējā skenēšanas cilpa izvilkta kopīgā
+  `scanHeaderColumns` funkcijā (lietota gan `detectImportColumns`, gan jaunā
+  `detectExecutionActColumns`), lai nedublētu merge-šūnu apstrādes loģiku.
+  `detectExecutionActColumns` atrod TIKAI 4 laukus (nrPk, name, unit,
+  executedThisPeriod) — apzināti mazāk nekā tāmes importa 7, jo akta lapu
+  izmaksu sadalījuma kolonnas (darba alga/materiāli/mehānismi) atšķiras pa
+  disciplīnām un prasot tās noraidītu lapas, ko citādi var pareizi nolasīt.
+- `executionActImport.ts` — jauns:
+  - `parseExecutionActWorkbook`/`parseExecutionActBuffer` — nolasa TIKAI
+    "Izpildīts atskaites periodā" (šī perioda daudzums) katrai datu rindai
+    (mērvienība = pazīstama, tāpat kā tāmes imports), tikai rindas ar
+    `executedQuantity !== 0` (tukšas/nulles rindas nav execution akta
+    ieraksts, skat. `models/executionRecord.ts`).
+  - `suggestSheetToSectionMapping` — akta lapa -> `BoqSection` PĒC PRECĪZAS
+    NOSAUKUMA SAKRITĪBAS, `null`, ja nav atbilstības (UI ļauj izvēlēties
+    manuāli vai izlaist).
+  - `matchExecutionActToProject` — atrisina akta rindas pret reāliem
+    projekta `BoqItem` PĒC KODA (Nr.p.k.) TIKAI mapotajā sadaļā (kods ir
+    unikāls tikai sadaļas ietvaros, ne visā projektā) — nesakrītošas rindas
+    (nav mapotas sadaļas VAI kods neatrasts) nonāk `unmatchedRows`, NEVIS
+    tiek klusi izmestas, lai UI tās var parādīt pirms apstiprināšanas.
+
+**UI** (`ExecutionRecords.tsx`): jauna poga "Importēt izpildes aktu
+(Excel)" līdzās "+ Jauns izpildes akts" (abas paslēptas, kamēr rāda kādu no
+formām). Klikšķis -> faila izvēle -> dinamisks `import("@tames-modulis/core/excel")`
+(tāpat kā visur citur, skat. "Bundle izmērs / code-splitting") ->
+`parseExecutionActBuffer` + `suggestSheetToSectionMapping` -> PRIEKŠSKATA
+tabula (akta lapa / sadaļas izvēlne / sakrita / nesakrita skaits katrai
+lapai) — lietotājs apstiprinātā dizaina "automātiski + priekšskata
+apstiprinājums" pieeja. Sadaļas `<select>` maiņa uzreiz PĀRRĒĶINA
+sakrišanas (`matchExecutionActToProject` izsaukts no `useMemo`, atkarīgs no
+pašreizējās mapping), nav vajadzīgs atkārtots faila nolasījums. Brīdinājuma
+baneris (`.baseline-banner`, tas pats stils kā bāzes iesaldēšanai), ja
+kopējais nesakritušo pozīciju skaits > 0. "Apstiprināt importu" izveido
+VIENU `ExecutionRecord` no visu mapoto lapu `entries` (lietotājs aizpilda
+periodu/datumu/apstiprinātāju TAJĀ PAŠĀ priekšskata formā) — nesaglabājas
+automātiski IndexedDB, tāpat kā manuālā ievade (jānospiež "Saglabāt").
+**Nav atbalstīts `.xls` fails** (tikai `.xlsx`) — `izpildes-akts-validacija`
+skill min LibreOffice konversiju priekš `.xls`, bet tas ir servera/CLI
+rīks, nevis kaut kas pieejams brauzera vidē; ārpus šī uzdevuma apjoma.
+
+**Manuāli pārbaudīts pret REĀLO PSKUS 2021-02 izpildes akta failu** (54
+darblapas, "Forma 3" tips) divos līmeņos:
+1. **Core līmenī** (pagaidu vitest skripts, izdzēsts pēc lietošanas):
+   fails importēts pret reālo VELVE tāmes failu (47 sadaļas/12876 pozīcijas,
+   tas pats fails, kas Sesijā 20) — `parseExecutionActWorkbook` atrada 4
+   lapas ar izpildi šajā periodā (ZD: 4, PAM: 7, KARK_O CIKLS: 11, ŪK: 14 =
+   36 rindas kopā), `suggestSheetToSectionMapping` pareizi sasaistīja visas
+   4 lapas pēc PRECĪZA nosaukuma (bez fuzzy loģikas vajadzības), un
+   `matchExecutionActToProject` sasaistīja VISAS 36 rindas pareizi (0
+   nesakritušu) — katras rindas kods (Nr.p.k.) atrada precīzi to pašu
+   pozīciju tāmē pēc apraksta/mērvienības/vienības izmaksām.
+2. **UI līmenī** (Playwright, reāls Chromium, `packages/web` dev serveris;
+   projekts sagatavots tieši IndexedDB ar 2 sadaļām — "ZD" ar TIKAI 2 no 4
+   reālā akta ZD-lapas kodiem kā pozīcijām, lai apzināti pārbaudītu
+   nesakritības ceļu, un nesaistīta sadaļa citam nosaukumam): priekšskata
+   tabula pareizi parādīja visu 4 lapu rindu skaitus (4/7/11/14, sakrīt ar
+   core līmeņa rezultātu); "ZD" lapa autouzatiecās pareizi uz "ZD" sadaļu
+   (`<option selected>`); sakrita=2/nesakrita=2 aprēķināts pareizi šai
+   lapai, pārējām (nemapotām) lapām sakrita=0/nesakrita=to pilnais rindu
+   skaits; brīdinājuma baneris parādīja pareizu kopējo skaitu (34) un
+   tekstu; "Apstiprināt importu" poga rādīja pareizu kopējo sakritības
+   skaitu (2) un bija atspējota, kamēr periods nebija aizpildīts; pēc
+   apstiprināšanas jaunais akts parādījās vēstures tabulā ar pareizu
+   pozīciju skaitu (2) un summu (0.08+7927.4=7927.48, sakrīt tieši ar akta
+   faila jēlajām vērtībām pozīcijām "2" un "5"). Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 98/98 testi zaļi (90 + 8 jauni: `detectExecutionActColumns`,
+  `parseExecutionActWorkbook`, `suggestSheetToSectionMapping`,
+  `matchExecutionActToProject`).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi — jaunais imports kods ir daļa no jau esošā lazy
+  `@tames-modulis/core/excel` chunk'a, galvenais bundle pieaudzis tikai par
+  jaunā UI komponenta kodu, ~155KB -> ~183KB).
+- ✅ Manuāli pārbaudīts pret REĀLU izpildes akta failu gan core, gan UI
+  līmenī (Playwright) — 0 nesakritušu pozīciju reālajā datu apakškopā, kur
+  bija pieejama atbilstoša tāme.
 
 ### Favicon
 

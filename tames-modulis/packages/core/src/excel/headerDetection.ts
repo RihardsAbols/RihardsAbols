@@ -35,6 +35,39 @@ const FIELD_MATCHERS: Record<keyof DetectedImportColumns, (key: string) => boole
 const FIELD_NAMES = Object.keys(FIELD_MATCHERS) as (keyof DetectedImportColumns)[];
 
 /**
+ * Scans a worksheet's header rows for cell text matching each of `matchers`,
+ * shared by detectImportColumns and detectExecutionActColumns below - both
+ * need the same "scan rows, skip non-anchor merged cells, first match wins"
+ * behavior, just over a different field set.
+ */
+function scanHeaderColumns<F extends string>(sheet: ExcelJS.Worksheet, matchers: Record<F, (key: string) => boolean>): Partial<Record<F, number>> {
+  const found: Partial<Record<F, number>> = {};
+  const fields = Object.keys(matchers) as F[];
+
+  for (let rowNumber = 1; rowNumber <= HEADER_SCAN_ROWS; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      // A merged cell's non-anchor members all report the anchor's value via
+      // exceljs, so a wide merged caption (real sheets have one: a ~26-column
+      // instructional note) would otherwise look like a header match at every
+      // column it spans. Only the top-left anchor cell's text counts.
+      if (cell.isMerged && cell.master !== cell) return;
+
+      const text = cellText(cell).trim();
+      if (!text) return;
+      const key = normalizeHeaderKey(text);
+      for (const field of fields) {
+        if (found[field] === undefined && matchers[field](key)) {
+          found[field] = colNumber;
+        }
+      }
+    });
+  }
+
+  return found;
+}
+
+/**
  * Locates the BOQ columns in a worksheet by scanning header text, instead of
  * assuming fixed column positions (TAME_COLUMNS). Real Līguma tāme files
  * insert extra columns - e.g. a per-building quantity breakdown between
@@ -54,27 +87,7 @@ const FIELD_NAMES = Object.keys(FIELD_MATCHERS) as (keyof DetectedImportColumns)
  * such sheets rather than importing an empty/garbage section.
  */
 export function detectImportColumns(sheet: ExcelJS.Worksheet): DetectedImportColumns | null {
-  const found: Partial<Record<keyof DetectedImportColumns, number>> = {};
-
-  for (let rowNumber = 1; rowNumber <= HEADER_SCAN_ROWS; rowNumber++) {
-    const row = sheet.getRow(rowNumber);
-    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      // A merged cell's non-anchor members all report the anchor's value via
-      // exceljs, so a wide merged caption (real sheets have one: a ~26-column
-      // instructional note) would otherwise look like a header match at every
-      // column it spans. Only the top-left anchor cell's text counts.
-      if (cell.isMerged && cell.master !== cell) return;
-
-      const text = cellText(cell).trim();
-      if (!text) return;
-      const key = normalizeHeaderKey(text);
-      for (const field of FIELD_NAMES) {
-        if (found[field] === undefined && FIELD_MATCHERS[field](key)) {
-          found[field] = colNumber;
-        }
-      }
-    });
-  }
+  const found = scanHeaderColumns(sheet, FIELD_MATCHERS);
 
   for (const field of FIELD_NAMES) {
     if (found[field] === undefined) {
@@ -83,4 +96,46 @@ export function detectImportColumns(sheet: ExcelJS.Worksheet): DetectedImportCol
   }
 
   return found as DetectedImportColumns;
+}
+
+export interface DetectedExecutionActColumns {
+  nrPk: number;
+  name: number;
+  unit: number;
+  /** "Izpildīts atskaites periodā" -> Daudzums (this reporting period's executed quantity) - see executionActImport.ts. */
+  executedThisPeriod: number;
+}
+
+const EXECUTION_ACT_FIELD_MATCHERS: Record<keyof DetectedExecutionActColumns, (key: string) => boolean> = {
+  nrPk: (key) => key === "nrpk",
+  name: (key) => key.includes("būvdarbunosaukum"),
+  unit: (key) => key.includes("mērvien"),
+  executedThisPeriod: (key) => key.includes("izpildītsatskaitesperiodā"),
+};
+
+const EXECUTION_ACT_FIELD_NAMES = Object.keys(EXECUTION_ACT_FIELD_MATCHERS) as (keyof DetectedExecutionActColumns)[];
+
+/**
+ * Same header-text-scanning approach as detectImportColumns, for a real
+ * izpildes akts (Forma Nr.2/Nr.3, LBN 501-17) workbook instead of a Līguma
+ * tāme - verified against a real akts file where the "Izpildīts atskaites
+ * periodā" column sits at column 29 on some sheets and 33 on others,
+ * depending on whether that sheet's cost breakdown includes an extra "laika
+ * norma" sub-group - the same class of column-shift already seen on tāme
+ * imports, just triggered by a different real-file quirk. Only the 4 fields
+ * actually needed to build an ExecutionRecordEntry are required (unlike
+ * detectImportColumns's 7) - an akts sheet's cost-breakdown columns vary
+ * enough between disciplines (electrical vs. demolition, say) that requiring
+ * them here would reject sheets we can otherwise read correctly.
+ */
+export function detectExecutionActColumns(sheet: ExcelJS.Worksheet): DetectedExecutionActColumns | null {
+  const found = scanHeaderColumns(sheet, EXECUTION_ACT_FIELD_MATCHERS);
+
+  for (const field of EXECUTION_ACT_FIELD_NAMES) {
+    if (found[field] === undefined) {
+      return null;
+    }
+  }
+
+  return found as DetectedExecutionActColumns;
 }
