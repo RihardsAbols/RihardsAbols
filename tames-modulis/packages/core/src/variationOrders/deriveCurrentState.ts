@@ -235,3 +235,156 @@ export function diffAgainstBaseline(baseline: BoqSection[], current: BoqSection[
   }
   return rows;
 }
+
+/** Vienas VO ietekme uz VIENU pozīciju - skat. computeItemCodesAndHistory. */
+export interface ItemVoImpact {
+  voId: string;
+  voNumber: string;
+  /** true, ja šī VO izveidoja pozīciju (nevis mainīja jau esošu). */
+  isNew: boolean;
+  /** Šīs VO izraisītā daudzuma izmaiņa - jaunai pozīcijai tas ir tās pilnais sākotnējais daudzums. */
+  quantityDelta: number;
+  /** Šīs VO izraisītā tiešo izmaksu izmaiņa (EUR), izolēti no citu VO ietekmes. */
+  directTotalDelta: number;
+}
+
+export interface ItemDisplayInfo {
+  /**
+   * Atvasināta N.p.k. vērtība pozīcijai (skat. computeItemCodesAndHistory) -
+   * NAV tas pats, kas BoqItem.code (kas paliek neskarts, brīvs teksts).
+   */
+  displayCode: string;
+  /** Katras VO ietekme uz šo pozīciju, VO secībā - tukšs, ja pozīciju neviena padotā VO nav skārusi. */
+  impacts: ItemVoImpact[];
+}
+
+/** 1->"a", 2->"b", ..., 26->"z", 27->"aa", ... (base-26, tāpat kā izklājlapu kolonnu burti). */
+function letterSuffix(n: number): string {
+  let s = "";
+  let x = n;
+  while (x > 0) {
+    x -= 1;
+    s = String.fromCharCode(97 + (x % 26)) + s;
+    x = Math.floor(x / 26);
+  }
+  return s;
+}
+
+interface ItemCodeState {
+  originCode: string;
+  /** VO numurs ("VO-N"), ja šo pozīciju automātiski numurēja jaunas pozīcijas izveide esošā sadaļā - citādi null. */
+  originTag: string | null;
+  revisionCount: number;
+  impacts: ItemVoImpact[];
+}
+
+/**
+ * Katrai pozīcijai atvasina (a) cilvēklasāmu N.p.k. displayCode, kas atspoguļo
+ * TĀS IZCELSMI un turpmāko VO revīziju vēsturi, un (b) katras padotās VO
+ * izolēto ietekmi uz šo pozīciju (daudzums + tiešās izmaksas) - skat.
+ * CLAUDE.md "Tāmes izmaiņu (Variation Order) vadība" numerācijas shēmu.
+ * `variationOrders` ir SAUCĒJA izvēlēts saraksts (parasti tikai approved, VO
+ * secībā) - tāpat kā deriveCurrentSections, šī funkcija pati nefiltrē pēc
+ * statusa.
+ *
+ * Displaycode noteikšana pēc izcelsmes:
+ * - Bāzes pozīcija, ko neviena VO nav mainījusi: displayCode === item.code.
+ * - Bāzes pozīcija, ko mainījušas N VO (kopā, neatkarīgi no konkrētā VO
+ *   numura): displayCode === item.code + burta piedēklis (revīzijas KĀRTA,
+ *   nevis konkrētās VO numurs - "1a" pēc 1. korekcijas, "1b" pēc 2., utt.).
+ * - Pavisam jauna pozīcija, ko VO pievieno ESOŠĀ (bāzes) sadaļā: jauns
+ *   unikāls numurs (turpina sadaļas numerāciju) + VO atzīme, piem.
+ *   "21 (VO-2)" - un TURPMĀK arī var iegūt revīzijas burtu, ja vēlāka VO to
+ *   atkal maina (piem. "21a (VO-2)").
+ * - Jauna pozīcija JAUNĀ (VO izveidotā) sadaļā: displayCode === newItem.code
+ *   tieši, kā lietotājs to ievadījis - nav auto-numura/tag, jo sadaļa pati
+ *   jau ir "sākas no 1" (skat. CLAUDE.md).
+ *
+ * Reizē lieto (nevis dublē) jau esošo applyChange/cloneSections mutācijas
+ * loģiku, lai daudzuma/izslēgšanas aprēķini paliktu VIENĀ vietā.
+ */
+export function computeItemCodesAndHistory(
+  baseline: BoqSection[],
+  variationOrders: VariationOrder[],
+): Map<string, ItemDisplayInfo> {
+  const workingSections = cloneSections(baseline);
+  const baselineSectionIds = new Set(baseline.map((s) => s.id));
+  const sectionCounters = new Map<string, number>(baseline.map((s) => [s.id, s.items.length]));
+  const itemState = new Map<string, ItemCodeState>();
+
+  for (const section of baseline) {
+    for (const item of section.items) {
+      itemState.set(item.id, { originCode: item.code, originTag: null, revisionCount: 0, impacts: [] });
+    }
+  }
+
+  const findItem = (itemId: string): BoqItem | undefined => {
+    for (const section of workingSections) {
+      const found = section.items.find((i) => i.id === itemId);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  for (const vo of variationOrders) {
+    for (const change of vo.changes) {
+      if (change.newSection) {
+        applyChange(workingSections, change);
+        continue;
+      }
+
+      if (change.itemId === null) {
+        applyChange(workingSections, change);
+        const newItem = findItem(change.id);
+        if (!newItem) continue; // sadaļa neeksistēja (nekonsekventi dati) - applyChange to jau klusi izlaida.
+        const directTotal = calculateItemCosts(newItem).directTotal;
+        const isBaselineSection = baselineSectionIds.has(change.sectionId);
+        let originCode: string;
+        let originTag: string | null;
+        if (isBaselineSection) {
+          const nextNumber = (sectionCounters.get(change.sectionId) ?? 0) + 1;
+          sectionCounters.set(change.sectionId, nextNumber);
+          originCode = String(nextNumber);
+          originTag = vo.number;
+        } else {
+          originCode = newItem.code;
+          originTag = null;
+        }
+        itemState.set(change.id, {
+          originCode,
+          originTag,
+          revisionCount: 0,
+          impacts: [{ voId: vo.id, voNumber: vo.number, isNew: true, quantityDelta: newItem.quantity, directTotalDelta: directTotal }],
+        });
+        continue;
+      }
+
+      const entry = itemState.get(change.itemId);
+      const itemBefore = findItem(change.itemId);
+      if (!entry || !itemBefore) continue; // nekonsekventi dati - klusi izlaižam, tāpat kā applyChange.
+      const beforeTotal = calculateItemCosts(itemBefore).directTotal;
+      applyChange(workingSections, change);
+      const itemAfter = findItem(change.itemId);
+      if (!itemAfter) continue;
+      const afterTotal = calculateItemCosts(itemAfter).directTotal;
+      if (change.quantityDelta !== 0 || change.excluded) {
+        entry.revisionCount += 1;
+        entry.impacts.push({
+          voId: vo.id,
+          voNumber: vo.number,
+          isNew: false,
+          quantityDelta: change.quantityDelta,
+          directTotalDelta: afterTotal - beforeTotal,
+        });
+      }
+    }
+  }
+
+  const result = new Map<string, ItemDisplayInfo>();
+  for (const [itemId, entry] of itemState) {
+    const suffix = entry.revisionCount > 0 ? letterSuffix(entry.revisionCount) : "";
+    const tag = entry.originTag ? ` (${entry.originTag})` : "";
+    result.set(itemId, { displayCode: `${entry.originCode}${suffix}${tag}`, impacts: entry.impacts });
+  }
+  return result;
+}

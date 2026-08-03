@@ -28,8 +28,11 @@ Npm workspace ar divām pakotnēm:
   `deriveCurrentState` (atvasina bāze + apstiprinātās VO, arī jaunas
   sadaļas), VO izveide/numerācija, `voidVariationOrder` (anulē apstiprinātu
   VO, skat. "Izpildes aktu/VO anulēšana (Sesija 23)" zemāk),
-  `computeVariationOrderDirectTotalImpact`, `diffAgainstBaseline` — skat.
-  "Tāmes izmaiņu (Variation Order) vadība" zemāk pilnu semantiku.
+  `computeVariationOrderDirectTotalImpact`, `diffAgainstBaseline`,
+  `computeItemCodesAndHistory` (atvasinātā N.p.k. numerācija + katras VO
+  izolētā ietekme uz katru pozīciju, skat. "Pozīciju numerācija + VO
+  izmaiņu vēsture (Sesija 24)" zemāk) — skat. "Tāmes izmaiņu (Variation
+  Order) vadība" zemāk pilnu semantiku.
 - `src/executionRecords/executionRecords.ts` — `computeExecutedToDate`
   (kumulatīvais izpildītais daudzums no visiem periodiem, izlaižot
   anulētos aktus), `computeRemainingQuantity`, `createExecutionRecord`,
@@ -172,8 +175,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
   `ProjectEditor.tsx` katrai sadaļai. `readOnly` props atspējo ievadi pēc
   bāzes iesaldēšanas, `executionRecords` props pievieno pastāvīgas
-  "Izpildīts"/"Atlikums" kolonnas (skat. "Tāmes izmaiņu (Variation Order)
-  vadība" zemāk).
+  "Izpildīts"/"Atlikums" kolonnas, `itemDisplay`/`voColumns` props aizstāj
+  "Nr." ar atvasinātu numerāciju un pievieno VO delta kolonnas (skat.
+  "Tāmes izmaiņu (Variation Order) vadība" zemāk).
 - `src/App.tsx` — savieno sarakstu un redaktoru, tur vienīgā
   `IndexedDbStorageAdapter` instance.
 - `index.html` — `<link rel="icon">` ir inline SVG `data:` URI (zils
@@ -1125,6 +1129,95 @@ shēmu). Konsolē nav kļūdu.
   pārlādes), ieskaitot to, ka Playwright atkal tika instalēts tikai
   pagaidu pārbaudei (`npm install --no-save playwright-core`, git status
   tīrs pēc noņemšanas) un pēc tam noņemts, tāpat kā Sesijās 20-22.
+
+### Pozīciju numerācija + VO izmaiņu vēsture "Tāme" cilnē (Sesija 24)
+
+Lietotāja pieprasījums pēc PR review smoke testa: gribēja redzēt izmaksu
+(ne tikai daudzuma) izmaiņu attiecībā pret bāzi SECĪGI pa VO (kura VO ko
+mainīja), un pozīciju tabulā ("Tāme" cilne) atvasinātu N.p.k. numerāciju,
+kas atspoguļo pozīcijas izcelsmi/revīziju vēsturi, nevis tikai bāzes brīvo
+tekstu. Precīza semantika apstiprināta ar lietotāju (`AskUserQuestion`)
+pirms ieviešanas — skat. lēmumus zemāk.
+
+**Jauna core funkcija** `computeItemCodesAndHistory(baseline,
+variationOrders)` (`variationOrders/deriveCurrentState.ts`, eksportēta arī
+no `src/index.ts`) — atgriež `Map<itemId, ItemDisplayInfo>`
+(`{ displayCode, impacts }`). Atkārtoti lieto jau esošo privāto
+`applyChange`/`cloneSections` (nedublē daudzuma/izslēgšanas mutācijas
+loģiku) — vienā caurgājienā pa padoto VO sarakstu (saucējs izvēlas, kuras
+padot, parasti `approved`, tāpat kā `deriveCurrentSections`) uzkrāj katras
+pozīcijas izcelsmi un katras VO izolēto ietekmi uz to (daudzums +
+`calculateItemCosts` tiešo izmaksu delta, TIEŠI ap `applyChange` izsaukumu
+"pirms"/"pēc" salīdzinājumā).
+
+**`displayCode` noteikšana pēc pozīcijas izcelsmes:**
+- Bāzes pozīcija, ko neviena VO nav mainījusi: `= item.code` (nemainīts).
+- Bāzes pozīcija, ko mainījušas N VO (kopā, neatkarīgi no konkrētās VO
+  numura): `item.code` + burta piedēklis — burts ir ŠĪS POZĪCIJAS PAŠAS
+  revīzijas KĀRTA (1. korekcija = "a", 2. = "b", ...), NEVIS konkrētās VO
+  numurs (apstiprināts ar lietotāju — ja VO-1 un VO-3 maina to pašu
+  pozīciju, bet VO-2 to nemaina, pozīcija kļūst "1a" pēc VO-1, tad "1b"
+  pēc VO-3, VO-2 burtu "izlaižot", jo tas nekad nemainīja ŠO pozīciju).
+- Pavisam jauna pozīcija, ko VO pievieno ESOŠĀ (bāzes) sadaļā: jauns
+  unikāls numurs (turpina sadaļas bāzes numerāciju, piem. "21") + VO
+  atzīme iekavās, piem. "21 (VO-2)" — lietotāja manuāli ievadītais "Kods"
+  lauks šai gadījumā TIEK IGNORĒTS displayCode aprēķinā (paliek glabāts
+  `BoqItem.code`, bet nerādās "Nr." kolonnā). Ja šo pozīciju vēlāka VO
+  atkal maina, tā papildus dabū revīzijas burtu (piem. "21a (VO-2)").
+- Jauna pozīcija JAUNĀ (VO izveidotā) sadaļā: `= newItem.code` tieši, kā
+  lietotājs to ievadījis — nav auto-numura/tag, jo sadaļa pati jau "sākas
+  no 1" (skat. "Jaunas sadaļas caur VO" augšā).
+
+**UI** (`ItemsTable.tsx`, jaunas opcionālas propas `itemDisplay`/
+`voColumns`): "Nr." šūna kad `itemDisplay` padots rāda atvasināto
+`displayCode` (tajā pašā disabled `<input>`, nemaina "inputs disabled, not
+hidden" konvenciju). Katrai `voColumns` VO pievienojas divas kolonnas AIZ
+"Mehānismi", PIRMS "Izpildīts"/"Atlikums" — "VO-X ΔDaudz." un "VO-X ΔEUR",
+rādot TIKAI šīs VO izraisīto DELTU (apstiprināts ar lietotāju — ne
+kumulatīvu rezultējošo vērtību), tukšs "-" ja VO šo pozīciju nemainīja,
+"JAUNS: N" jaunai pozīcijai (tas pats marķieris, ko jau lieto Excel
+eksporta "Bāzes daudzums" kolonna, skat. "Tāmes izmaiņu (Variation Order)
+vadība" augšā). `ProjectEditor.tsx` aprēķina `itemDisplay` TIKAI pēc bāzes
+iesaldēšanas (tāpat kā visur citur VO jēdziens bez bāzes nav definēts), un
+per-sadaļa `voColumns` filtrējot `approvedVariationOrders` pēc tā, vai
+kāda šīs sadaļas pozīcija satur impact ar attiecīgo VO — secība garantēta
+no autoritatīvā VO masīva, ne no impact apvienošanas kārtas.
+
+**Jauna `.code-input` CSS klase** (`min-width: 6rem`) — bez tās garākie
+atvasinātie kodi (piem. "21 (VO-2)") vizuāli apgriezās šaurajā "Nr."
+kolonnā (atklāts manuālajā Playwright pārbaudē ar ekrānuzņēmumu, izlabots
+pirms uzskatīt par pabeigtu — skat. "Kolonnu platumi" augšā par to pašu
+kļūdu klasi Excel eksportā).
+
+**Apzināti ĀRPUS šī uzdevuma apjoma** (varētu būt nākamais kandidāts,
+JĀPAJAUTĀ lietotājam, ne jāpieņem, skat. PROGRESS.md Sesija 24): Excel
+eksports NEMAINĀS (paliek sava "Bāzes daudzums"/"Delta" shēma, Sesija 18);
+`VariationOrders.tsx` VO kartes izmaiņu tabula (kas jau rāda "daudzums +5"
+u.tml.) nemainās — jaunā numerācija/kolonnas ir TIKAI `ItemsTable.tsx`.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi persistences pārbaudei un ekrānuzņēmumu vizuālai
+pārbaudei):** projekts ar 1 bāzes pozīciju (daudzums 10, vienības izmaksa
+6€) — VO-1 (+5, apstiprināta), VO-2 (pievieno jaunu pozīciju TAJĀ PAŠĀ
+sadaļā, apstiprināta), VO-3 (+3 TAI PAŠAI bāzes pozīcijai, apstiprināta).
+Bāzes pozīcija -> "1.1b" (VO-1 kolonnā +5/30.00€, VO-2 kolonnā "-"/"-",
+VO-3 kolonnā +3/18.00€); jaunā pozīcija -> "2 (VO-2)" (VO-2 kolonnā
+"JAUNS: 3"/"9.00 €", VO-1/VO-3 kolonnās "-", manuāli ievadītais kods
+pareizi ignorēts). PĒC LAPAS PĀRLĀDES abi displayCode saglabājās
+identiski. REGRESIJA pārbaudīta ar projektu BEZ jebkādas VO — gan pirms,
+gan pēc bāzes iesaldēšanas galvene identiska oriģinālajai (nav VO
+kolonnu), "Nr." šūna rāda/rediģē to pašu `item.code` kā iepriekš. Konsolē
+nav kļūdu nevienā solī.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 115/115 testi zaļi (108 + 7 jauni `computeItemCodesAndHistory`
+  testi).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna numerācijas/vēstures plūsma,
+  persistence pēc lapas pārlādes, regresija projektam bez VO, konsolē nav
+  kļūdu, tāpat instalēts/noņemts tikai pagaidu pārbaudei kā iepriekšējās
+  sesijās.
 
 ### Favicon
 

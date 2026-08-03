@@ -1418,13 +1418,104 @@ tāpat kā Sesijās 20-22.
   akta anulēšanas plūsma, atkārtoto aprēķinu pareizība, statusa/iemesla
   persistence pēc lapas pārlādes, konsolē nav kļūdu.
 
+## Sesija 24: Pozīciju numerācija + VO izmaiņu vēsture "Tāme" cilnē — ✅ pabeigts
+
+Lietotāja manuālā smoke testa (PR #1, Sesijas 23 anulēšanas funkcija)
+laikā saņemts feedback ārpus tā testa apjoma, bet tieši uz esošo VO
+funkcionalitāti: (1) jaunas sadaļas izveide caur VO ir grūti atrodama
+(atbildēts sarunā, funkcionalitāte jau eksistēja kopš Sesijas 19 - nav
+koda izmaiņu), (2) jāredz izmaksu izmaiņa (ne tikai daudzuma) attiecībā
+pret bāzi, secīgi pa VO, lai izsekotu, kura VO ko mainīja, (3) pozīciju
+tabulā jāparādās kolonnām "Daudzums VO nr.X" un atvasinātai N.p.k.
+numerācijai (burta piedēklis esošai pozīcijai, jauns unikāls numurs jaunai
+pozīcijai esošā sadaļā).
+
+**Lēmumi (apstiprināti ar lietotāju pirms ieviešanas, EnterPlanMode +
+AskUserQuestion):**
+- VO delta kolonnas rāda TIKAI šīs VO izraisīto izmaiņu (tukšs/"-", ja VO
+  šo pozīciju nemainīja) - NE kumulatīvu rezultējošo vērtību.
+- Burta piedēklis (a/b/c...) ir POZĪCIJAS PAŠAS revīzijas kārtas
+  skaitītājs (cik reižu to KOPĀ mainījušas VO), NEVIS konkrētās VO
+  numurs.
+- Jaunai pozīcijai esošā sadaļā: numurs = nākamais brīvais cipars sadaļas
+  numerācijā + VO atzīme, piem. "21 (VO-2)".
+- Izmaksu izmaiņa pa VO ir ATSEVIŠĶA kolonna ("VO-X ΔEUR") blakus katrai
+  daudzuma kolonnai ("VO-X ΔDaudz."), nevis viena kopēja summa.
+- Apzināti ĀRPUS apjoma: Excel eksports NEMAINĀS (paliek sava "Bāzes
+  daudzums"/"Delta" shēma no Sesijas 18); `VariationOrders.tsx` VO kartes
+  izmaiņu tabula nemainās - jaunā numerācija/kolonnas ir TIKAI
+  `ItemsTable.tsx` ("Tāme" cilnē).
+
+**Implementēts:** jauna core funkcija
+`computeItemCodesAndHistory(baseline, variationOrders)`
+(`variationOrders/deriveCurrentState.ts`, eksportēta arī no `src/index.ts`)
+- atkārtoti lieto jau esošo privāto `applyChange`/`cloneSections` (nedublē
+  daudzuma/izslēgšanas mutācijas loģiku), atgriež
+  `Map<itemId, {displayCode, impacts}>`: `displayCode` atvasināts pēc
+  pozīcijas izcelsmes (bāzes kods + revīzijas burts / auto-numurs + VO
+  atzīme jaunai pozīcijai esošā sadaļā / manuāli ievadītais kods jaunā
+  VO-sadaļā - nemainās), `impacts[]` katras padotās VO izolētā ietekme
+  (daudzums + tiešās izmaksas, `isNew` karogs jaunām pozīcijām). Saucējs
+  izvēlas, kuras VO padot (parasti tikai `approved`, tāpat kā
+  `deriveCurrentSections`).
+
+`ItemsTable.tsx` jaunas opcionālas propas `itemDisplay`/`voColumns` - kad
+padotas, "Nr." šūna rāda atvasināto `displayCode` (tajā pašā disabled
+`<input>`, nemaina esošo "inputs disabled, not hidden" konvenciju), un
+katrai relevantajai VO pievienojas divas kolonnas TABULAS VIDŪ (aiz
+"Mehānismi", pirms "Izpildīts"/"Atlikums") ar šīs VO deltu (vai "-", ja
+nav ietekmes; "JAUNS: N" jaunai pozīcijai, tas pats marķieris, ko jau
+lieto Excel eksporta "Bāzes daudzums" kolonna). Jauna `.code-input` CSS
+klase (`min-width: 6rem`) - bez tās garākie atvasinātie kodi (piem.
+"21 (VO-2)") vizuāli apgriezās šaurajā "Nr." kolonnā (atklāts manuālajā
+pārbaudē, izlabots). `ProjectEditor.tsx` aprēķina `itemDisplay` (tikai
+pēc bāzes iesaldēšanas) un per-sadaļa `voColumns` (filtrē
+`approvedVariationOrders` pēc tā, vai kāda šīs sadaļas pozīcija satur
+impact ar attiecīgo `voId` - secība garantēta no autoritatīvā VO masīva).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi persistences pārbaudei un ekrānuzņēmumu vizuālai
+pārbaudei):** projekts ar 1 pozīciju (daudzums 10, vienības izmaksa 6€) -
+VO-1 (+5, apstiprināta), VO-2 (pievieno jaunu pozīciju TAJĀ PAŠĀ sadaļā,
+apstiprināta), VO-3 (+3 TAI PAŠAI bāzes pozīcijai, apstiprināta). "Tāme"
+cilnē: bāzes pozīcija -> "1.1b" (divas revīzijas: VO-1 un VO-3, VO-2
+neietekmēja - "b" pareizi izlaiž "VO-2 burtu", jo tas ir PAŠAS pozīcijas
+revīziju skaitītājs, ne VO numurs); VO-1 kolonna +5/30.00€, VO-2 kolonna
+"-"/"-" (nemainīja), VO-3 kolonna +3/18.00€; jaunā pozīcija -> "2 (VO-2)"
+(sadaļā bija 1 bāzes pozīcija, tāpēc nākamais numurs "2"; manuāli ievadītais
+"Kods" lauks pareizi IGNORĒTS displayCode aprēķinā), VO-2 kolonnā "JAUNS: 3"/
+"9.00 €" (3×(1+1+1)), VO-1/VO-3 kolonnās "-". PĒC LAPAS PĀRLĀDES abi
+displayCode saglabājās identiski. REGRESIJA pārbaudīta ar otru projektu
+BEZ jebkādas VO - gan pirms, gan PĒC bāzes iesaldēšanas galvene identiska
+oriģinālajai (nav VO kolonnu), "Nr." šūna rāda/rediģē to pašu `item.code`
+kā iepriekš. Konsolē nav kļūdu nevienā solī. Playwright atkal instalēts
+tikai pagaidu pārbaudei (`npm install --no-save playwright-core`, git
+status tīrs pēc noņemšanas) un pēc tam noņemts, tāpat kā iepriekšējās
+sesijās.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 115/115 testi zaļi (108 + 7 jauni `computeItemCodesAndHistory`
+  testi - nemainīta pozīcija, viena/divas revīzijas, jauna pozīcija esošā/
+  jaunā sadaļā, no-op izmaiņa nemaina burtu, saucēja filtrēta VO neietekmē).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi - ~189KB galvenais/~954KB excel chunk, nav jaunas
+  atkarības).
+- ✅ Manuāli pārbaudīts ar Playwright - pilna VO numerācijas/vēstures
+  plūsma, persistence pēc lapas pārlādes, regresija projektam bez VO,
+  konsolē nav kļūdu.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Sesijas 20-23 apstiprinātie uzdevumi ir pabeigti. Šobrīd NAV zināma
-neapstiprināta kandidāta — iepriekšējā saraksta vienīgais ieraksts
-(izpildes aktu/VO korekcijas iespēja) tika atrisināts šajā sesijā.
+Sesijas 20-24 apstiprinātie uzdevumi ir pabeigti. Šobrīd NAV zināma
+neapstiprināta kandidāta.
+
+**Apzināti ārpus Sesijas 24 apjoma (varētu būt nākamais kandidāts, JĀPAJAUTĀ
+lietotājam, nevis jāpieņem):** Excel eksporta paplašināšana ar tām pašām
+atvasinātās numerācijas/VO-delta kolonnām, ko Sesija 24 pievienoja TIKAI
+web UI; `VariationOrders.tsx` VO kartes izmaiņu tabulas atjaunināšana, lai
+arī tā rādītu atvasināto displayCode.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-23) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
-konkrēts nākamais uzdevums — nav gatava kandidātu saraksta, ko piedāvāt
+Sesijas 18-24) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
+konkrēts nākamais uzdevums - nav gatava kandidātu saraksta, ko piedāvāt
 bez papildu konteksta no lietotāja.

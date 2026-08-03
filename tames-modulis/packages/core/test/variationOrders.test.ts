@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BoqItem, BoqSection } from "../src/models/boq.js";
 import type { VariationOrder, VariationOrderChange } from "../src/models/variationOrder.js";
 import {
+  computeItemCodesAndHistory,
   computeVariationOrderDirectTotalImpact,
   createVariationOrder,
   deriveCurrentSections,
@@ -355,5 +356,102 @@ describe("diffAgainstBaseline", () => {
     const diff = diffAgainstBaseline(baseline, current);
     expect(diff).toHaveLength(1);
     expect(diff[0]).toMatchObject({ sectionName: "Papildu darbi", itemId: "new-item-1", baselineQuantity: null, currentQuantity: 5 });
+  });
+});
+
+describe("computeItemCodesAndHistory", () => {
+  it("keeps the raw code as displayCode for a baseline item no VO ever touched", () => {
+    const baseline = [section([item()])];
+    const history = computeItemCodesAndHistory(baseline, []);
+    expect(history.get("item-1")).toEqual({ displayCode: "1.1", impacts: [] });
+  });
+
+  it("appends a revision letter (based on how many times this item was touched) after one VO changes its quantity", () => {
+    const baseline = [section([item({ quantity: 10 })])];
+    const change1 = vo({ id: "vo-1", number: "VO-1", changes: [change({ quantityDelta: 5 })] });
+    const history = computeItemCodesAndHistory(baseline, [change1]);
+    const info = history.get("item-1")!;
+    expect(info.displayCode).toBe("1.1a");
+    expect(info.impacts).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", isNew: false, quantityDelta: 5, directTotalDelta: 30 }, // (15-10) * (2+3+1)
+    ]);
+  });
+
+  it("advances the revision letter to 'b' when a second variation order later touches the same item", () => {
+    const baseline = [section([item({ quantity: 10 })])];
+    const voA = vo({ id: "vo-1", number: "VO-1", changes: [change({ id: "c1", quantityDelta: 5 })] });
+    const voB = vo({ id: "vo-2", number: "VO-2", changes: [change({ id: "c2", quantityDelta: 3 })] });
+    const history = computeItemCodesAndHistory(baseline, [voA, voB]);
+    const info = history.get("item-1")!;
+    expect(info.displayCode).toBe("1.1b");
+    expect(info.impacts).toHaveLength(2);
+    expect(info.impacts[0]).toMatchObject({ voId: "vo-1", quantityDelta: 5 });
+    expect(info.impacts[1]).toMatchObject({ voId: "vo-2", quantityDelta: 3 });
+  });
+
+  it("does not advance the revision letter for a no-op change (quantityDelta 0, not excluded)", () => {
+    const baseline = [section([item({ quantity: 10 })])];
+    const noOp = vo({ id: "vo-1", number: "VO-1", changes: [change({ quantityDelta: 0, excluded: false })] });
+    const history = computeItemCodesAndHistory(baseline, [noOp]);
+    expect(history.get("item-1")).toEqual({ displayCode: "1.1", impacts: [] });
+  });
+
+  it("assigns a new unique number + VO tag to a brand-new item added to an existing (baseline) section", () => {
+    const baseline = [section([item()])]; // 1 baseline item -> next auto number is 2
+    const newItem = {
+      code: "manuāli-ievadīts-kods", // apzināti ignorēts - jaunai pozīcijai esošā sadaļā displayCode ir auto-numurs, ne šis
+      description: "Jauna pozīcija",
+      unit: "gab",
+      quantity: 3,
+      unitLaborCost: 1,
+      unitMaterialsCost: 1,
+      unitMechanismsCost: 1,
+    };
+    const voAdd = vo({ id: "vo-1", number: "VO-1", changes: [change({ id: "new-change-1", itemId: null, newItem })] });
+    const history = computeItemCodesAndHistory(baseline, [voAdd]);
+    const info = history.get("new-change-1")!;
+    expect(info.displayCode).toBe("2 (VO-1)");
+    expect(info.impacts).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", isNew: true, quantityDelta: 3, directTotalDelta: 9 }, // 3 * (1+1+1)
+    ]);
+  });
+
+  it("keeps the manually-entered code as displayCode for a new item in a brand-new (VO-created) section", () => {
+    const baseline = [section([item()], { id: "sec-1", name: "Zemes darbi" })];
+    const newItem = {
+      code: "1",
+      description: "Pirmā pozīcija jaunajā sadaļā",
+      unit: "gab",
+      quantity: 4,
+      unitLaborCost: 1,
+      unitMaterialsCost: 1,
+      unitMechanismsCost: 1,
+    };
+    const voAdd = vo({
+      id: "vo-1",
+      number: "VO-1",
+      changes: [
+        change({
+          id: "new-section-1",
+          sectionId: "new-section-1",
+          itemId: null,
+          newSection: { name: "Papildu darbi", estimateNumber: "2-1" },
+        }),
+        change({ id: "new-item-1", sectionId: "new-section-1", itemId: null, newItem }),
+      ],
+    });
+    const history = computeItemCodesAndHistory(baseline, [voAdd]);
+    expect(history.get("new-item-1")).toEqual({
+      displayCode: "1",
+      impacts: [{ voId: "vo-1", voNumber: "VO-1", isNew: true, quantityDelta: 4, directTotalDelta: 12 }], // 4 * (1+1+1)
+    });
+  });
+
+  it("ignores variation orders the caller does not include (e.g. a voided VO filtered out before calling)", () => {
+    const baseline = [section([item({ quantity: 10 })])];
+    const voided = vo({ id: "vo-1", number: "VO-1", status: "voided", changes: [change({ quantityDelta: 5 })] });
+    const history = computeItemCodesAndHistory(baseline, []); // saucējs jau izfiltrējis "voided" VO
+    expect(history.get("item-1")).toEqual({ displayCode: "1.1", impacts: [] });
+    expect(voided.status).toBe("voided"); // sanity - konstruēts, bet tīši nav padots
   });
 });

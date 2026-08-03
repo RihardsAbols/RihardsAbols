@@ -1,4 +1,4 @@
-import { deriveCurrentState, summarizeBoq } from "@tames-modulis/core";
+import { computeItemCodesAndHistory, deriveCurrentState, summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, CompanyDetails, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ExecutionRecords } from "./ExecutionRecords.js";
@@ -84,6 +84,14 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const baselineLocked = state.baselineApprovedAt !== null;
   const displayState = baselineLocked ? deriveCurrentState(state) : state;
   const summary = summarizeBoq(displayState);
+
+  // Atvasinātā N.p.k. numerācija + katras VO izolētā ietekme uz katru
+  // pozīciju "Tāme" cilnes ItemsTable kolonnām - skat. CLAUDE.md "Tāmes
+  // izmaiņu (Variation Order) vadība". Tikai apstiprinātās VO (tāpat kā
+  // deriveCurrentState iekšēji dara), un tikai pēc bāzes iesaldēšanas - VO
+  // jēdziens bez bāzes nav definēts.
+  const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
+  const itemDisplay = baselineLocked ? computeItemCodesAndHistory(state.sections, approvedVariationOrders) : undefined;
 
   const updateItem = (sectionIndex: number, itemIndex: number, patch: Partial<BoqItem>) =>
     update((s) => ({
@@ -395,6 +403,13 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
                   onRemoveItem={(itemIndex) => removeItem(sectionIndex, itemIndex)}
                   readOnly={baselineLocked}
                   executionRecords={state.executionRecords}
+                  itemDisplay={itemDisplay}
+                  voColumns={
+                    itemDisplay &&
+                    approvedVariationOrders
+                      .filter((vo) => section.items.some((item) => itemDisplay.get(item.id)?.impacts.some((i) => i.voId === vo.id)))
+                      .map((vo) => ({ voId: vo.id, voNumber: vo.number }))
+                  }
                 />
                 {!baselineLocked && <button onClick={() => addItem(sectionIndex)}>+ Pozīcija</button>}
 
