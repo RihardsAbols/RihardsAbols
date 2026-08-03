@@ -548,13 +548,26 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = hasBaseline ? deriveCurrentSections(state.sections, approvedVariationOrders) : state.sections;
   const exportState: BoqState = hasBaseline ? { ...state, sections: currentSections } : state;
+  // Looked up by id, NOT array index - a VO can add a brand-new section
+  // (see models/variationOrder.ts VariationOrderChange.newSection), which
+  // would misalign index-based lookup for that section and everything after
+  // it. A section with no baseline counterpart (the new one itself) gets
+  // `null` here, same as the whole no-baseline-yet case.
+  const baselineSectionsById = new Map(state.sections.map((s) => [s.id, s]));
 
   const boqSummary = summarizeBoq(exportState);
   const firstSectionRow = tableHeaderRow + 1;
 
   currentSections.forEach((section, i) => {
     const sheetName = sanitizeSheetName(section.name, usedSheetNames);
-    const baselineSection = hasBaseline ? state.sections[i] : null;
+    // A brand-new section (added by a VO, see VariationOrderChange.newSection)
+    // has no baseline counterpart - use a synthetic empty one instead of
+    // `null` so the "Bāzes daudzums"/"Delta" columns still render (every item
+    // in it correctly shows as "JAUNS"), consistent with every other sheet in
+    // this export rather than silently differing for this one sheet.
+    const baselineSection = hasBaseline
+      ? (baselineSectionsById.get(section.id) ?? { id: section.id, name: section.name, estimateNumber: section.estimateNumber, items: [] })
+      : null;
     const directTotalRow = writeSectionSheet(workbook, sheetName, section, exportState, baselineSection);
     const row = firstSectionRow + i;
     const sectionSummary = boqSummary.sections[i];

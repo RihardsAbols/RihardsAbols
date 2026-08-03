@@ -37,6 +37,7 @@ function change(overrides: Partial<VariationOrderChange> = {}): VariationOrderCh
     quantityDelta: 0,
     excluded: false,
     newItem: null,
+    newSection: null,
     ...overrides,
   };
 }
@@ -131,6 +132,53 @@ describe("deriveCurrentSections", () => {
     const baseline = [section([item({ quantity: 10 })])];
     deriveCurrentSections(baseline, [vo({ changes: [change({ quantityDelta: 5 })] })]);
     expect(baseline[0].items[0].quantity).toBe(10);
+  });
+
+  it("adds a brand-new (empty) section, keyed by the change id", () => {
+    const baseline = [section([item()], { id: "sec-1", name: "Zemes darbi" })];
+    const current = deriveCurrentSections(baseline, [
+      vo({
+        changes: [
+          change({
+            id: "new-section-1",
+            sectionId: "new-section-1",
+            itemId: null,
+            newItem: null,
+            newSection: { name: "Jauns darbu bloks", estimateNumber: "2-1" },
+          }),
+        ],
+      }),
+    ]);
+    expect(current).toHaveLength(2);
+    expect(current[1]).toEqual({ id: "new-section-1", name: "Jauns darbu bloks", estimateNumber: "2-1", items: [] });
+  });
+
+  it("lets a change in the same VO add an item to a section that VO just created", () => {
+    const baseline = [section([item()], { id: "sec-1", name: "Zemes darbi" })];
+    const newItem = {
+      code: "1.1",
+      description: "Pirmā pozīcija jaunajā sadaļā",
+      unit: "gab",
+      quantity: 4,
+      unitLaborCost: 1,
+      unitMaterialsCost: 1,
+      unitMechanismsCost: 1,
+    };
+    const current = deriveCurrentSections(baseline, [
+      vo({
+        changes: [
+          change({
+            id: "new-section-1",
+            sectionId: "new-section-1",
+            itemId: null,
+            newItem: null,
+            newSection: { name: "Jauns darbu bloks", estimateNumber: "2-1" },
+          }),
+          change({ id: "new-item-1", sectionId: "new-section-1", itemId: null, newItem }),
+        ],
+      }),
+    ]);
+    expect(current[1].items).toEqual([{ ...newItem, id: "new-item-1", excluded: false }]);
   });
 });
 
@@ -241,5 +289,34 @@ describe("diffAgainstBaseline", () => {
     expect(byId["increased"]).toMatchObject({ baselineQuantity: 10, currentQuantity: 15, quantityDelta: 5, excluded: false });
     expect(byId["excluded"]).toMatchObject({ baselineQuantity: 10, currentQuantity: 10, excluded: true, currentDirectTotal: 0 });
     expect(byId["c3"]).toMatchObject({ baselineQuantity: null, currentQuantity: 2 });
+  });
+
+  it("surfaces items in a brand-new section (created by a VO) as new, with the new section's name", () => {
+    const baseline = [section([item({ id: "unchanged" })], { id: "sec-1", name: "Zemes darbi" })];
+    const current = deriveCurrentSections(baseline, [
+      vo({
+        changes: [
+          change({ id: "new-section-1", sectionId: "new-section-1", itemId: null, newSection: { name: "Papildu darbi", estimateNumber: "2-1" } }),
+          change({
+            id: "new-item-1",
+            sectionId: "new-section-1",
+            itemId: null,
+            newItem: {
+              code: "1",
+              description: "Jauns darbs",
+              unit: "gab",
+              quantity: 5,
+              unitLaborCost: 1,
+              unitMaterialsCost: 1,
+              unitMechanismsCost: 1,
+            },
+          }),
+        ],
+      }),
+    ]);
+
+    const diff = diffAgainstBaseline(baseline, current);
+    expect(diff).toHaveLength(1);
+    expect(diff[0]).toMatchObject({ sectionName: "Papildu darbi", itemId: "new-item-1", baselineQuantity: null, currentQuantity: 5 });
   });
 });

@@ -1,6 +1,7 @@
 import { deriveCurrentState, summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, CompanyDetails, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { ExecutionRecords } from "./ExecutionRecords.js";
 import { ItemsTable } from "./ItemsTable.js";
 import { VariationOrders } from "./VariationOrders.js";
 
@@ -54,7 +55,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"tame" | "izmainas">("tame");
+  const [activeTab, setActiveTab] = useState<"tame" | "izmainas" | "izpilde">("tame");
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -358,6 +359,9 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button className={activeTab === "izmainas" ? "tab-active" : ""} onClick={() => setActiveTab("izmainas")}>
             Izmaiņas (VO)
           </button>
+          <button className={activeTab === "izpilde" ? "tab-active" : ""} onClick={() => setActiveTab("izpilde")}>
+            Izpildes akti
+          </button>
         </div>
       )}
 
@@ -418,6 +422,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
       )}
 
       {baselineLocked && activeTab === "izmainas" && <VariationOrders state={state} onUpdate={update} />}
+      {baselineLocked && activeTab === "izpilde" && <ExecutionRecords state={state} onUpdate={update} />}
     </div>
   );
 }

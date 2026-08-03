@@ -10,6 +10,18 @@ function cloneSections(sections: BoqSection[]): BoqSection[] {
 }
 
 function applyChange(sections: BoqSection[], change: VariationOrderChange): void {
+  if (change.newSection) {
+    // Jauna (sākotnēji tukša) sadaļa - pati izmaiņa nepievieno pozīcijas,
+    // skat. models/variationOrder.ts VariationOrderChange.newSection.
+    // Neveido dublikātu, ja šī sadaļa (pēc id) jau eksistē - aizsardzība pret
+    // to, ka šī funkcija tiek izsaukta ar to pašu VO sarakstu vairākas
+    // reizes (piem. UI preview aprēķini).
+    if (!sections.some((s) => s.id === change.id)) {
+      sections.push({ id: change.id, name: change.newSection.name, estimateNumber: change.newSection.estimateNumber, items: [] });
+    }
+    return;
+  }
+
   const section = sections.find((s) => s.id === change.sectionId);
   if (!section) {
     return; // Sadaļa neeksistē (nekonsekventi dati) - klusi izlaižam, nevis metam kļūdu, jo šo funkciju izsauc arī UI render ceļā.

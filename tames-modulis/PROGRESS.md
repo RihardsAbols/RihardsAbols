@@ -1018,3 +1018,140 @@ chunk nemainīgs ~950KB atsevišķi).
   esošā funkcionalitāte + "Apstiprināt bāzes tāmi"; (2) apjomu samazinājums/
   izslēgšana - `quantityDelta < 0` un/vai `excluded: true`; (3) apjomu
   palielinājums - `quantityDelta > 0`, arī pavisam jaunu pozīciju pievienošana.
+
+## Sesija 19: Jaunas sadaļas caur VO + izpildes aktu uzskaite/atlikums — ✅ pabeigts
+
+**Uzdevums:** lietotāja feedback tūlīt pēc Sesijas 19 pieprasījuma, divi
+papildinājumi Sesijas 18 VO funkcionalitātei:
+1. VO jāspēj izveidot pavisam JAUNU sadaļu ar jaunām pozīcijām (ne tikai
+   jaunas pozīcijas esošā sadaļā) - reāls gadījums, kad VO ievieš pavisam
+   jaunu darbu bloku, kas sākotnējā tāmē nemaz nebija.
+2. Jāievada izpildes aktu vēsture pa atskaites periodiem (piem. mēnesi) -
+   katram periodam kolonna ar inženiera apstiprināto izpildīto daudzumu pa
+   pozīcijām, PLUS atvasināta "atlikums uz nākamo periodu" kolonna. Šis
+   atlikums vienmēr jāredz, gatavojot jaunu VO, lai nesamazinātu/neizslēgtu
+   apjomu, kas jau (daļēji) izpildīts.
+
+**Precizējoši jautājumi UZDOTI LIETOTĀJAM PIRMS ieviešanas** (pirmā kārta
+pārtraukta/nav atbildēta strukturētā formā, otrā kārta atbildēta tekstā) -
+lēmumi:
+- Izpildes aktu vēsture: **pilns audit trail** (nevis viens rediģējams
+  skaitlis) - katrs periods ir atsevišķs ieraksts ar pozīciju sarakstu un
+  šajā periodā izpildīto daudzumu, plus atvasināta atlikuma kolonna.
+- Ievade: **manuāla** (nevis Excel imports no izpildes akta faila - tas
+  atlikts uz vēlāku sesiju, ja vajadzēs).
+- Validācija (VO samazina apjomu zem izpildītā): **brīdinājums, ne
+  bloķēšana** - lietotājs pieņem lēmumu, sistēma neuzņemas šķīrējtiesneša
+  lomu.
+- Jaunas sadaļas caur VO: divu soļu process (viena izmaiņa izveido tukšu
+  sadaļu, nākamā tai pievieno pozīcijas), konsekventi ar jau ieviesto
+  "jaunas pozīcijas" mehānismu - lietotājs to netieši apstiprināja,
+  neiebilstot pret piedāvāto pieeju.
+
+**Datu modelis (`schemaVersion` `6 -> 7`):**
+- `packages/core/src/models/executionRecord.ts` (jauns fails) —
+  `ExecutionRecord` (`id`, `period` (brīvs teksts, piem. "2026-01"),
+  `date`, `approvedBy`, `entries[]`, `createdAt`/`updatedAt`) un
+  `ExecutionRecordEntry` (`sectionId`, `itemId`, `executedQuantity` - ŠAJĀ
+  PERIODĀ izpildītais, ne kumulatīvs). `BoqState.executionRecords:
+  ExecutionRecord[]`.
+- `packages/core/src/models/variationOrder.ts` — `VariationOrderChange.
+  newSection: { name, estimateNumber } | null` - kad iestatīts, izmaiņa
+  izveido tukšu sadaļu ar `id` vienādu ar pašas izmaiņas `id` (self-
+  referencing, tāpat kā jaunām pozīcijām), `itemId`/`newItem` paliek
+  `null`. Pozīcijas tai pievieno ATSEVIŠĶAS turpmākas izmaiņas, kas norāda
+  `sectionId: <sadaļu izveidojušās izmaiņas id>`.
+
+**Aprēķini/atvasināšana:**
+- `variationOrders/deriveCurrentState.ts` `applyChange` - jauns pirmais
+  pārbaudījums `if (change.newSection)`, kas pievieno tukšu sadaļu un
+  atgriežas, PIRMS mēģina meklēt `change.sectionId` esošajās sadaļās (kas
+  jaunai sadaļai vienalga neeksistētu pirms šīs izmaiņas). Aizsardzība pret
+  dublikātu izveidi, ja funkcija izsaukta atkārtoti ar to pašu VO sarakstu.
+- `packages/core/src/executionRecords/executionRecords.ts` (jauns fails) -
+  `computeExecutedToDate(executionRecords, itemId)` (summē visus periodus),
+  `computeRemainingQuantity(currentQuantity, executedToDate)` (vienkārša
+  atņemšana, var atgriezt negatīvu - UI parāda kā brīdinājumu, funkcija
+  pati neierobežo), `createExecutionRecord(input)`.
+
+**Reāla kļūda atrasta un izlabota, ieviešot jaunas sadaļas atbalstu:**
+`excel/export.ts` `exportBoqToWorkbook` iepriekš saskaņoja katras sadaļas
+"pašreizējo" un "bāzes" versiju PĒC MASĪVA INDEKSA (`state.sections[i]`),
+pieņemot, ka sadaļu skaits/secība starp `state.sections` (bāze) un
+`currentSections` (atvasinātais) vienmēr sakrīt - tas bija patiess TIKAI
+tāpēc, ka pirms šīs sesijas VO nevarēja pievienot sadaļas. Ar jaunām
+sadaļām šis pieņēmums lūst (jauna sadaļa nobīda visu, kas seko tai
+masīvā, no pareizās bāzes atbilstības). Izlabots uz meklēšanu PĒC ID
+(`Map` no `state.sections`), un jaunai sadaļai (bez bāzes atbilstības)
+padots SINTĒTISKS tukšs bāzes sadaļas objekts (nevis `null`), lai "Bāzes
+daudzums"/"Delta" kolonnas paliktu konsekventas visās eksportētajās
+lapās. Pārbaudīts ar jaunu testu (`excel.test.ts`), kas tieši šo scenāriju
+apstiprina (jauna sadaļa nesabojā esošo sadaļu bāzes saskaņojumu).
+
+**Web UI:**
+- `packages/web/src/components/VariationOrders.tsx` - sadaļas izvēlnē
+  izmaiņas pievienošanas formā pirmā opcija "+ Jauna sadaļa" (nosaukums +
+  tāmes numurs lauki, pozīcijas izvēlne paslēpta). Sadaļu/pozīciju
+  izvēlnes balstās uz "preview" atvasinājumu (bāze + apstiprinātās VO +
+  ŠĪS VO PAŠAS jau pievienotās izmaiņas, drošs pievienot bez dubultas
+  piemērošanas, jo forma atveras tikai "proposed" VO), lai varētu izveidot
+  sadaļu un TAJĀ PAŠĀ VO uzreiz tai pievienot pozīcijas. Katras VO izmaiņu
+  tabulas nosaukumu izšķirtspēja (`resolveSectionName`) tagad pareizi
+  parāda jaunu sadaļu nosaukumus, arī ja VO vēl "proposed" (izmantojot šīs
+  VO pašas preview atvasinājumu, nevis tikai globālo apstiprināto stāvokli).
+  Jauna izvēloties esošu pozīciju: informācijas rinda "Pašreizējais
+  daudzums / Izpildīts līdz šim / Pieejamais atlikums" un brīdinājuma
+  teksts, ja izmaiņa samazinātu apjomu zem jau izpildītā.
+- `packages/web/src/components/ExecutionRecords.tsx` (jauns fails) -
+  "Izpildes akti" cilnes saturs: jauna akta forma (periods/datums/
+  apstiprinātājs) + pa sadaļām (tāpat kā "Tāme" cilne) tabula ar Nr./
+  Nosaukums/Mērv./Pašreizējais/Izpildīts līdz šim/Šajā periodā (ievade)/
+  Atlikums uz nākamo periodu (dzīvi pārrēķināts); rindas ar atlikums < 0
+  vizuāli izceltas. Zem tam aktu vēstures tabula. NAV virtualizēta (skat.
+  CLAUDE.md zināmais ierobežojums).
+- `packages/web/src/components/ProjectEditor.tsx` - trešā cilne "Izpildes
+  akti" (rāda tikai pēc bāzes iesaldēšanas, tāpat kā "Izmaiņas (VO)").
+- `packages/web/src/App.css` - jauni stili (`.vo-change-new-section`,
+  `.vo-remaining-info`, `.vo-executed-warning`, `.execution-*`).
+
+**Testi:** `packages/core/test/variationOrders.test.ts` - 3 jauni testi
+(jaunas tukšas sadaļas izveide, pozīcijas pievienošana tajā pašā VO
+izveidotai sadaļai, `diffAgainstBaseline` pareizi parāda jaunas sadaļas
+pozīcijas). `test/executionRecords.test.ts` (jauns fails, 6 testi) -
+`computeExecutedToDate`, `computeRemainingQuantity` (arī negatīvs
+gadījums), `createExecutionRecord`. `test/storage.test.ts` - 2 jauni
+migrācijas testi (v6->v7 defaulti/`newSection: null` atpakaļaizpilde uz
+esošām izmaiņām, un jau iestatītu vērtību saglabāšana). `test/excel.test.ts`
+- 1 jauns tests (jauna sadaļa caur VO renderējas kā sava lapa, katra
+pozīcija ar "JAUNS" bāzes kolonnā, BEZ esošo sadaļu bāzes saskaņojuma
+salaušanas - tieši pārbauda iepriekš minēto kļūdu). Kopā **82/82 core
+testi zaļi** (70 + 12 jauni).
+
+**Manuāla pārbaude (Playwright, reāls Chromium):** izveidots projekts ar
+sadaļu/pozīciju, apstiprināta bāze, izveidota VO ar DIVĀM secīgām
+izmaiņām tajā pašā VO (jauna sadaļa "Papildu sadaļa" + jauna pozīcija
+tajā) - izmaiņu tabula pareizi parādīja abas izmaiņas ar pareizu sadaļas
+nosaukumu; apstiprinot VO, "Tāme" cilnē parādījās abas sadaļas ar pareizu
+kopsavilkumu (1000€ + 60€ = 1060€ tiešās izmaksas). Izveidots izpildes
+akts periodam "2026-01" ar izpildītu daudzumu 40 (no 100) vienai
+pozīcijai - atlikums tabulā pareizi aprēķināts (60), vēstures tabulā
+parādījās kopsavilkums. Jaunā VO izveides formā, izvēloties šo pašu
+pozīciju, pareizi parādījās "Pieejamais atlikums: 60 m3"; ievadot -70
+daudzuma korekciju (kas samazinātu apjomu uz 30, kas ir mazāk par
+izpildītajiem 40), parādījās pareizs brīdinājuma teksts ar konkrētiem
+skaitļiem. Konsolē nav kļūdu visā plūsmā (`page.on("console"/"pageerror")`
+tukšs). `npm run build:web` veiksmīgs (~178KB galvenais bundle, `exceljs`
+chunk nemainīgs).
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 82/82 testi zaļi (12 jauni šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
+- ✅ Manuāli pārbaudīts pilna plūsma reālā pārlūkā: jauna sadaļa caur VO
+  (divas secīgas izmaiņas vienā VO), izpildes akta ievade un atlikuma
+  aprēķins, atlikuma rādīšana un brīdinājums VO izveides formā.
+- ✅ Migrācija (v6 bez jaunajiem laukiem -> v7 ar defaultiem, ieskaitot
+  atpakaļaizpildi uz iepriekš saglabātām VO izmaiņām; v6 ar jau iestatītiem
+  laukiem -> saglabāti) testēta.
+- ✅ Reāla Excel eksporta kļūda (index-based sadaļu saskaņojums) atrasta un
+  izlabota PIRMS lietotāja to būtu ieraudzījis reālā eksportā - pārbaudīta
+  ar mērķtiecīgu testu.

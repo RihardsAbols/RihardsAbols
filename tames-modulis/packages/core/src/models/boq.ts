@@ -1,3 +1,4 @@
+import type { ExecutionRecord } from "./executionRecord.js";
 import type { VariationOrder } from "./variationOrder.js";
 
 export interface BoqItem {
@@ -88,11 +89,21 @@ export interface BoqState {
   baselineApprovedAt: string | null;
   /** Ierosinātās/apstiprinātās/noraidītās tāmes izmaiņas pret bāzi. */
   variationOrders: VariationOrder[];
+  /**
+   * Izpildes akti pa atskaites periodiem (piem. mēnesi) - katrs satur pa
+   * pozīcijām šajā periodā inženiera apstiprināto izpildīto daudzumu.
+   * Kumulatīvais "izpildīts līdz šim"/"atlikums" vienmēr atvasināts no šī
+   * saraksta (skat. executionRecords/executionRecords.ts), nevis glabāts
+   * atsevišķi. Skat. CLAUDE.md "Tāmes izmaiņu (Variation Order) vadība".
+   */
+  executionRecords: ExecutionRecord[];
   createdAt: string;
   updatedAt: string;
 }
 
-// v6 pievienoja baselineApprovedAt (bāzes tāmes iesaldēšanas atzīme) un
+// v7 pievienoja executionRecords (izpildes aktu vēsture pa periodiem, lieto
+// atlikuma aprēķinam pirms jaunas VO izveides) un VariationOrderChange.newSection
+// (VO var izveidot pavisam jaunu sadaļu, ne tikai pozīcijas esošā). v6 pievienoja baselineApprovedAt (bāzes tāmes iesaldēšanas atzīme) un
 // variationOrders (tāmes izmaiņu/VO saraksts) - skat. models/variationOrder.ts
 // un variationOrders/deriveCurrentState.ts. v5 pievienoja projekta līmeņa
 // contractor/client rekvizītus un preparedBy/checkedBy (Excel eksporta
@@ -102,7 +113,7 @@ export interface BoqState {
 // `unitPrice` with a darba alga/materiāli/mehānismi split and added
 // overheadRate/profitRate, matching the Līguma tāme format used by the
 // izpildes-akts-validacija skill (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;
@@ -133,6 +144,7 @@ export function createEmptyBoqState(projectId: string, projectName: string): Boq
     sections: [],
     baselineApprovedAt: null,
     variationOrders: [],
+    executionRecords: [],
     createdAt: now,
     updatedAt: now,
   };

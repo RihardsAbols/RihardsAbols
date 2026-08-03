@@ -18,6 +18,13 @@ export {
   computeVariationOrderDirectTotalImpact,
   diffAgainstBaseline,
 } from "./variationOrders/deriveCurrentState.js";
+export type { ExecutionRecord, ExecutionRecordEntry } from "./models/executionRecord.js";
+export type { CreateExecutionRecordInput } from "./executionRecords/executionRecords.js";
+export {
+  computeExecutedToDate,
+  computeRemainingQuantity,
+  createExecutionRecord,
+} from "./executionRecords/executionRecords.js";
 export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";
 // FileSystemStorageAdapter is intentionally NOT re-exported here: it imports
 // node:fs/promises, and this barrel must stay bundleable for the browser

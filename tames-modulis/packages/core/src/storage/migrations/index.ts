@@ -57,7 +57,31 @@ const migrations: Record<number, Migration> = {
     baselineApprovedAt: typeof data.baselineApprovedAt === "string" ? data.baselineApprovedAt : null,
     variationOrders: Array.isArray(data.variationOrders) ? data.variationOrders : [],
   }),
+  // v6 had no executionRecords (izpildes aktu vēsture) and its VO changes had
+  // no newSection field (VO could only add items to existing sections, not
+  // create new ones) - default executionRecords to empty, and backfill
+  // newSection: null on every existing change so older VOs keep working
+  // unchanged with the new (slightly larger) VariationOrderChange shape.
+  6: (data) => ({
+    ...data,
+    executionRecords: Array.isArray(data.executionRecords) ? data.executionRecords : [],
+    variationOrders: Array.isArray(data.variationOrders)
+      ? data.variationOrders.map((vo) => migrateVariationOrderV6ToV7(vo as Record<string, unknown>))
+      : data.variationOrders,
+  }),
 };
+
+function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...vo,
+    changes: Array.isArray(vo.changes)
+      ? vo.changes.map((change) => {
+          const c = change as Record<string, unknown>;
+          return { ...c, newSection: c.newSection ?? null };
+        })
+      : vo.changes,
+  };
+}
 
 function migrateCompanyDetails(value: unknown): { name: string; regNr: string; address: string } {
   const v = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};

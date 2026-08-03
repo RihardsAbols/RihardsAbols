@@ -1,4 +1,6 @@
 import {
+  computeExecutedToDate,
+  computeRemainingQuantity,
   computeVariationOrderDirectTotalImpact,
   createVariationOrder,
   deriveCurrentSections,
@@ -26,6 +28,9 @@ const STATUS_LABELS: Record<VariationOrder["status"], string> = {
   rejected: "Noraidīts",
 };
 
+/** Sadaļas izvēlnes sentinel vērtība "+ Jauna sadaļa" opcijai - nekad nesakrīt ar īstu sadaļas/izmaiņas id (crypto.randomUUID()). */
+const NEW_SECTION_VALUE = "__new__";
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -42,6 +47,7 @@ function emptyVoForm(): NewVoFormState {
 }
 
 interface ChangeFormState {
+  /** Esošas (vai šīs VO jau izveidotas) sadaļas id, vai NEW_SECTION_VALUE. */
   sectionId: string;
   /** "" nozīmē "jauna pozīcija" (skat. itemId === null models/variationOrder.ts). */
   itemId: string;
@@ -54,6 +60,8 @@ interface ChangeFormState {
   newUnitLaborCost: string;
   newUnitMaterialsCost: string;
   newUnitMechanismsCost: string;
+  newSectionName: string;
+  newSectionEstimateNumber: string;
 }
 
 function emptyChangeForm(firstSectionId: string): ChangeFormState {
@@ -69,6 +77,8 @@ function emptyChangeForm(firstSectionId: string): ChangeFormState {
     newUnitLaborCost: "0",
     newUnitMaterialsCost: "0",
     newUnitMechanismsCost: "0",
+    newSectionName: "",
+    newSectionEstimateNumber: "",
   };
 }
 
@@ -84,12 +94,22 @@ function emptyChangeForm(firstSectionId: string): ChangeFormState {
 export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
   const [voForm, setVoForm] = useState<NewVoFormState>(emptyVoForm());
   const [openChangeFormFor, setOpenChangeFormFor] = useState<string | null>(null);
-  const [changeForm, setChangeForm] = useState<ChangeFormState>(emptyChangeForm(state.sections[0]?.id ?? ""));
+  const [changeForm, setChangeForm] = useState<ChangeFormState>(emptyChangeForm(state.sections[0]?.id ?? NEW_SECTION_VALUE));
 
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = deriveCurrentSections(state.sections, approvedVariationOrders);
-  const currentSectionsById = new Map(currentSections.map((s) => [s.id, s]));
   const diffRows = diffAgainstBaseline(state.sections, currentSections);
+
+  // Sadaļas/pozīcijas, kas pieejamas IZMAIŅAS PIEVIENOŠANAS formai konkrētai
+  // (vienmēr "proposed") VO - bāze + apstiprinātās VO + ŠĪS VO PAŠAS jau
+  // pievienotās izmaiņas (lai var, piem., pirmajā izmaiņā izveidot jaunu
+  // sadaļu un otrajā, tajā pašā VO, tai jau pievienot pozīciju, pirms VO ir
+  // apstiprināta). Droši pievienot `vo` klāt bez dublēšanās risku, jo forma
+  // atveras TIKAI "proposed" VO (skat. JSX zemāk), kas nekad nav
+  // `approvedVariationOrders` iekšā.
+  const openVo = openChangeFormFor ? state.variationOrders.find((vo) => vo.id === openChangeFormFor) : undefined;
+  const previewSections = openVo ? deriveCurrentSections(state.sections, [...approvedVariationOrders, openVo]) : currentSections;
+  const previewSectionsById = new Map(previewSections.map((s) => [s.id, s]));
 
   const handleCreateVo = () => {
     if (!voForm.title.trim()) return;
@@ -118,12 +138,24 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
 
   const openAddChange = (voId: string) => {
     setOpenChangeFormFor(voId);
-    setChangeForm(emptyChangeForm(state.sections[0]?.id ?? ""));
+    setChangeForm(emptyChangeForm(state.sections[0]?.id ?? NEW_SECTION_VALUE));
   };
 
   const handleAddChange = (voId: string) => {
     let change: VariationOrderChange;
-    if (changeForm.itemId === "") {
+    if (changeForm.sectionId === NEW_SECTION_VALUE) {
+      if (!changeForm.newSectionName.trim()) return;
+      const newId = crypto.randomUUID();
+      change = {
+        id: newId,
+        sectionId: newId,
+        itemId: null,
+        quantityDelta: 0,
+        excluded: false,
+        newItem: null,
+        newSection: { name: changeForm.newSectionName, estimateNumber: changeForm.newSectionEstimateNumber },
+      };
+    } else if (changeForm.itemId === "") {
       if (!changeForm.newDescription.trim()) return;
       change = {
         id: crypto.randomUUID(),
@@ -131,6 +163,7 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
         itemId: null,
         quantityDelta: 0,
         excluded: false,
+        newSection: null,
         newItem: {
           code: changeForm.newCode,
           description: changeForm.newDescription,
@@ -149,6 +182,7 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
         quantityDelta: changeForm.excluded ? 0 : Number(changeForm.quantityDelta),
         excluded: changeForm.excluded,
         newItem: null,
+        newSection: null,
       };
     }
 
@@ -159,6 +193,20 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
     }));
     setOpenChangeFormFor(null);
   };
+
+  const selectedItem =
+    changeForm.sectionId !== NEW_SECTION_VALUE && changeForm.itemId !== ""
+      ? previewSectionsById.get(changeForm.sectionId)?.items.find((i) => i.id === changeForm.itemId)
+      : undefined;
+  const executedToDate = selectedItem ? computeExecutedToDate(state.executionRecords, selectedItem.id) : 0;
+  const remaining = selectedItem ? computeRemainingQuantity(selectedItem.quantity, executedToDate) : null;
+  const resultingQuantity = selectedItem
+    ? changeForm.excluded
+      ? 0
+      : Math.max(0, selectedItem.quantity + Number(changeForm.quantityDelta || "0"))
+    : null;
+  const showExecutedWarning =
+    selectedItem !== undefined && resultingQuantity !== null && executedToDate > 0 && resultingQuantity < executedToDate;
 
   return (
     <div className="variation-orders">
@@ -191,6 +239,20 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
 
       {state.variationOrders.map((vo) => {
         const impact = computeVariationOrderDirectTotalImpact(state.sections, state.variationOrders, vo.id);
+        // Šīs VO pašas izmaiņu tabulas (sadaļu/pozīciju nosaukumu) atveidošanai
+        // vajag PIEEJU arī pie sadaļām/pozīcijām, ko izveidojusi PATI ŠĪ VO
+        // (ne tikai bāze + citas apstiprinātās) - ja vo pati jau apstiprināta,
+        // tā jau ir approvedVariationOrders iekšā, tāpēc to nepievieno vēlreiz
+        // (dubultā piemērošana sabojātu daudzumus).
+        const voOwnSections =
+          vo.status === "approved" ? currentSections : deriveCurrentSections(state.sections, [...approvedVariationOrders, vo]);
+        const voOwnSectionsById = new Map(voOwnSections.map((s) => [s.id, s]));
+        const resolveSectionName = (sectionId: string): string => {
+          const creatingChange = vo.changes.find((c) => c.id === sectionId && c.newSection);
+          if (creatingChange?.newSection) return creatingChange.newSection.name;
+          return voOwnSectionsById.get(sectionId)?.name ?? state.sections.find((s) => s.id === sectionId)?.name ?? sectionId;
+        };
+
         return (
           <div className="vo-card" key={vo.id}>
             <div className="vo-card-header">
@@ -216,23 +278,24 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
                 </thead>
                 <tbody>
                   {vo.changes.map((change) => {
-                    const section = state.sections.find((s) => s.id === change.sectionId);
-                    const changeLabel =
-                      change.itemId === null
+                    const changeLabel = change.newSection
+                      ? "+ jauna sadaļa"
+                      : change.itemId === null
                         ? "+ jauna pozīcija"
                         : change.excluded
                           ? "IZSLĒGTA"
                           : `daudzums ${signed(change.quantityDelta)}`;
-                    const itemLabel =
-                      change.itemId === null
+                    const itemLabel = change.newSection
+                      ? "-"
+                      : change.itemId === null
                         ? `${change.newItem?.code ?? ""} ${change.newItem?.description ?? ""}`
                         : (() => {
-                            const found = currentSectionsById.get(change.sectionId)?.items.find((i) => i.id === change.itemId);
+                            const found = voOwnSectionsById.get(change.sectionId)?.items.find((i) => i.id === change.itemId);
                             return found ? `${found.code} ${found.description}` : change.itemId;
                           })();
                     return (
                       <tr key={change.id}>
-                        <td>{section?.name ?? change.sectionId}</td>
+                        <td>{resolveSectionName(change.sectionId)}</td>
                         <td>{itemLabel}</td>
                         <td>{changeLabel}</td>
                         {vo.status === "proposed" && (
@@ -265,96 +328,142 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
                     value={changeForm.sectionId}
                     onChange={(e) => setChangeForm((f) => ({ ...f, sectionId: e.target.value, itemId: "" }))}
                   >
-                    {state.sections.map((s) => (
+                    <option value={NEW_SECTION_VALUE}>+ Jauna sadaļa</option>
+                    {previewSections.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
                       </option>
                     ))}
                   </select>
                 </label>
-                <label>
-                  Pozīcija
-                  <select value={changeForm.itemId} onChange={(e) => setChangeForm((f) => ({ ...f, itemId: e.target.value }))}>
-                    <option value="">+ Jauna pozīcija</option>
-                    {(currentSectionsById.get(changeForm.sectionId)?.items ?? []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.code} - {item.description.slice(0, 40)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
 
-                {changeForm.itemId === "" ? (
-                  <div className="vo-change-new-item">
+                {changeForm.sectionId === NEW_SECTION_VALUE ? (
+                  <div className="vo-change-new-section">
                     <label>
-                      Kods
-                      <input value={changeForm.newCode} onChange={(e) => setChangeForm((f) => ({ ...f, newCode: e.target.value }))} />
-                    </label>
-                    <label>
-                      Nosaukums
+                      Sadaļas nosaukums
                       <input
-                        value={changeForm.newDescription}
-                        onChange={(e) => setChangeForm((f) => ({ ...f, newDescription: e.target.value }))}
+                        value={changeForm.newSectionName}
+                        onChange={(e) => setChangeForm((f) => ({ ...f, newSectionName: e.target.value }))}
                       />
                     </label>
                     <label>
-                      Mērv.
-                      <input value={changeForm.newUnit} onChange={(e) => setChangeForm((f) => ({ ...f, newUnit: e.target.value }))} />
-                    </label>
-                    <label>
-                      Daudzums
+                      Tāmes numurs
                       <input
-                        type="number"
-                        value={changeForm.newQuantity}
-                        onChange={(e) => setChangeForm((f) => ({ ...f, newQuantity: e.target.value }))}
+                        placeholder="Nr."
+                        value={changeForm.newSectionEstimateNumber}
+                        onChange={(e) => setChangeForm((f) => ({ ...f, newSectionEstimateNumber: e.target.value }))}
                       />
                     </label>
-                    <label>
-                      Darba alga
-                      <input
-                        type="number"
-                        value={changeForm.newUnitLaborCost}
-                        onChange={(e) => setChangeForm((f) => ({ ...f, newUnitLaborCost: e.target.value }))}
-                      />
-                    </label>
-                    <label>
-                      Materiāli
-                      <input
-                        type="number"
-                        value={changeForm.newUnitMaterialsCost}
-                        onChange={(e) => setChangeForm((f) => ({ ...f, newUnitMaterialsCost: e.target.value }))}
-                      />
-                    </label>
-                    <label>
-                      Mehānismi
-                      <input
-                        type="number"
-                        value={changeForm.newUnitMechanismsCost}
-                        onChange={(e) => setChangeForm((f) => ({ ...f, newUnitMechanismsCost: e.target.value }))}
-                      />
-                    </label>
+                    <p className="hint">
+                      Jaunā sadaļa sākumā ir tukša - pozīcijas tai pievieno ar nākamu izmaiņu, izvēloties šo sadaļu.
+                    </p>
                   </div>
                 ) : (
-                  <div className="vo-change-existing-item">
-                    <label className="vo-exclude-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={changeForm.excluded}
-                        onChange={(e) => setChangeForm((f) => ({ ...f, excluded: e.target.checked }))}
-                      />
-                      Izslēgt pilnībā
+                  <>
+                    <label>
+                      Pozīcija
+                      <select value={changeForm.itemId} onChange={(e) => setChangeForm((f) => ({ ...f, itemId: e.target.value }))}>
+                        <option value="">+ Jauna pozīcija</option>
+                        {(previewSectionsById.get(changeForm.sectionId)?.items ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.code} - {item.description.slice(0, 40)}
+                          </option>
+                        ))}
+                      </select>
                     </label>
-                    {!changeForm.excluded && (
-                      <label>
-                        Daudzuma izmaiņa (+/-)
-                        <input
-                          type="number"
-                          value={changeForm.quantityDelta}
-                          onChange={(e) => setChangeForm((f) => ({ ...f, quantityDelta: e.target.value }))}
-                        />
-                      </label>
+
+                    {changeForm.itemId === "" ? (
+                      <div className="vo-change-new-item">
+                        <label>
+                          Kods
+                          <input
+                            value={changeForm.newCode}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newCode: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          Nosaukums
+                          <input
+                            value={changeForm.newDescription}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newDescription: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          Mērv.
+                          <input
+                            value={changeForm.newUnit}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newUnit: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          Daudzums
+                          <input
+                            type="number"
+                            value={changeForm.newQuantity}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newQuantity: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          Darba alga
+                          <input
+                            type="number"
+                            value={changeForm.newUnitLaborCost}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newUnitLaborCost: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          Materiāli
+                          <input
+                            type="number"
+                            value={changeForm.newUnitMaterialsCost}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newUnitMaterialsCost: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          Mehānismi
+                          <input
+                            type="number"
+                            value={changeForm.newUnitMechanismsCost}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, newUnitMechanismsCost: e.target.value }))}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="vo-change-existing-item">
+                        {selectedItem && (
+                          <p className="vo-remaining-info">
+                            Pašreizējais daudzums: {selectedItem.quantity} {selectedItem.unit} · Izpildīts līdz šim:{" "}
+                            {executedToDate} {selectedItem.unit} · Pieejamais atlikums: {remaining} {selectedItem.unit}
+                          </p>
+                        )}
+                        <label className="vo-exclude-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={changeForm.excluded}
+                            onChange={(e) => setChangeForm((f) => ({ ...f, excluded: e.target.checked }))}
+                          />
+                          Izslēgt pilnībā
+                        </label>
+                        {!changeForm.excluded && (
+                          <label>
+                            Daudzuma izmaiņa (+/-)
+                            <input
+                              type="number"
+                              value={changeForm.quantityDelta}
+                              onChange={(e) => setChangeForm((f) => ({ ...f, quantityDelta: e.target.value }))}
+                            />
+                          </label>
+                        )}
+                        {showExecutedWarning && (
+                          <p className="vo-executed-warning">
+                            ⚠ Uzmanību: no {selectedItem?.quantity} {selectedItem?.unit} jau izpildīti {executedToDate}{" "}
+                            {selectedItem?.unit} - šī izmaiņa samazinātu apjomu uz {resultingQuantity} {selectedItem?.unit},
+                            kas ir MAZĀK par jau izpildīto.
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
 
                 <div className="vo-change-form-actions">

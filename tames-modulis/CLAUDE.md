@@ -14,16 +14,25 @@ Npm workspace ar divām pakotnēm:
   nosaukums/reģ.nr./adrese) un `preparedBy`/`checkedBy` ir projekta līmenī;
   `BoqSection.estimateNumber` ir manuāli ievadāma tāmes numerācija sadaļas
   līmenī — skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
-  `BoqState.baselineApprovedAt`/`variationOrders` un `BoqItem.excluded` —
-  tāmes izmaiņu (Variation Order) vadība, skat. "Tāmes izmaiņu (Variation
-  Order) vadība" zemāk.
+  `BoqState.baselineApprovedAt`/`variationOrders`/`executionRecords` un
+  `BoqItem.excluded` — tāmes izmaiņu (Variation Order) vadība un izpildes
+  aktu uzskaite, skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/models/variationOrder.ts` — `VariationOrder`/`VariationOrderChange`
-  tipi (skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk).
+  tipi, ieskaitot `VariationOrderChange.newSection` (VO var izveidot
+  pavisam jaunu sadaļu, ne tikai pozīciju esošā) — skat. "Tāmes izmaiņu
+  (Variation Order) vadība" zemāk.
+- `src/models/executionRecord.ts` — `ExecutionRecord`/`ExecutionRecordEntry`
+  tipi (izpildes akts par vienu atskaites periodu) — skat. "Tāmes izmaiņu
+  (Variation Order) vadība" zemāk.
 - `src/variationOrders/deriveCurrentState.ts` — `deriveCurrentSections`/
-  `deriveCurrentState` (atvasina bāze + apstiprinātās VO), VO izveide/
-  numerācija, `computeVariationOrderDirectTotalImpact`,
+  `deriveCurrentState` (atvasina bāze + apstiprinātās VO, arī jaunas
+  sadaļas), VO izveide/numerācija, `computeVariationOrderDirectTotalImpact`,
   `diffAgainstBaseline` — skat. "Tāmes izmaiņu (Variation Order) vadība"
   zemāk pilnu semantiku.
+- `src/executionRecords/executionRecords.ts` — `computeExecutedToDate`
+  (kumulatīvais izpildītais daudzums no visiem periodiem),
+  `computeRemainingQuantity`, `createExecutionRecord` — skat. "Tāmes
+  izmaiņu (Variation Order) vadība" zemāk.
 - `src/storage/StorageAdapter.ts` — glabāšanas saskarne
   (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
   (fails <-> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
@@ -40,7 +49,7 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6`, `migrateToCurrent` atbalsta
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7`, `migrateToCurrent` atbalsta
   pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
@@ -81,7 +90,8 @@ Npm workspace ar divām pakotnēm:
 - `test/` — vitest testi (glabāšanas round-trip, migrāciju stubs, aprēķini,
   Excel eksports/imports round-trip un imports no "svešas" darblapas,
   `ProjectService` CRUD pret in-memory `StorageAdapter`,
-  `variationOrders/deriveCurrentState.ts` derivācija/VO izveide/diff).
+  `variationOrders/deriveCurrentState.ts` derivācija/VO izveide/diff,
+  `executionRecords/executionRecords.ts` izpildīto/atlikuma aprēķini).
 
 ### Node vs. universāls kods, un ieejas punkti
 
@@ -130,11 +140,15 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   `exportBoqToBuffer`/`importBoqFromBuffer` ar dinamisku
   `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis statiski augšā
   failā — skat. "Bundle izmērs / code-splitting" zemāk. "Apstiprināt bāzes
-  tāmi" poga un "Tāme"/"Izmaiņas (VO)" cilnes pēc iesaldēšanas — skat.
-  "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  tāmi" poga un "Tāme"/"Izmaiņas (VO)"/"Izpildes akti" cilnes pēc
+  iesaldēšanas — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/components/VariationOrders.tsx` — "Izmaiņu" cilnes saturs (VO
-  izveide/apstiprināšana/noraidīšana, izmaiņu pievienošana, diff skats) —
-  skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  izveide/apstiprināšana/noraidīšana, izmaiņu pievienošana — ieskaitot
+  jaunas sadaļas izveidi, atlikuma rādīšana pirms izmaiņas pievienošanas,
+  diff skats) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+- `src/components/ExecutionRecords.tsx` — "Izpildes akti" cilnes saturs
+  (jauna izpildes akta ievade pa sadaļām ar izpildīts/atlikums kolonnām,
+  aktu vēsture) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
   `ProjectEditor.tsx` katrai sadaļai. `readOnly` props atspējo ievadi pēc
@@ -174,7 +188,13 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   statusa plūsmu** (ierosināts/apstiprināts/noraidīts), NEVIS tikai
   rediģējami "pašreizējie" daudzumi — un "pašreizējais" stāvoklis vienmēr
   ATVASINĀTS no iesaldētas bāzes + apstiprinātajām VO, bāze pēc iesaldēšanas
-  nekad netiek mutēta. Skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  nekad netiek mutēta. VO var izveidot arī pavisam JAUNU sadaļu (ne tikai
+  pozīciju esošā). Skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+- **Izpildes akti veido atsevišķu, papildinošu vēsturi pa atskaites
+  periodiem** (`BoqState.executionRecords`), nevis vienu rediģējamu
+  "izpildīts kopā" skaitli pozīcijā — kumulatīvais izpildītais un atlikums
+  vienmēr ATVASINĀTS no šīs vēstures. Skat. "Tāmes izmaiņu (Variation
+  Order) vadība" zemāk.
 - **Aprēķini noapaļo tikai vienreiz, beigās** (`summarizeBoq`) — sadaļu un
   kopējās summas tiek saskaitītas no nenoapaļotiem starprezultātiem, lai
   daudzu sīku pozīciju gadījumā noapaļošanas kļūda nesakrātos.
@@ -592,6 +612,117 @@ skat. PROGRESS.md Sesija 18 pilnu pārbaudes aprakstu — bāzes iesaldēšana,
 VO izveide/izmaiņu pievienošana (daudzuma pieaugums UN izslēgšana)/
 apstiprināšana, diff skats, Excel eksports (`.xlsx` fails pārbaudīts ar
 `openpyxl`), konsolē nav kļūdu.
+
+#### Jaunas sadaļas caur VO (Sesija 19)
+
+Sesijā 18 VO varēja pievienot jaunas POZĪCIJAS esošā sadaļā, bet ne jaunas
+SADAĻAS — dokumentēts kā zināms ierobežojums. Sesijā 19 lietotājs
+pieprasīja to atbalstīt (reāls gadījums: VO ievieš pavisam jaunu darbu
+bloku, kas sākotnējā tāmē nemaz nebija).
+
+**Mehānisms — divu soļu process, konsekventi ar jau esošo "jaunas
+pozīcijas" pieeju:** `VariationOrderChange.newSection: { name, estimateNumber
+} | null` — kad iestatīts, šī izmaiņa izveido TUKŠU sadaļu ar `id` vienādu
+ar pašas izmaiņas `id` (self-referencing, tāpat kā jaunām pozīcijām).
+Pozīcijas šai sadaļai pievieno ATSEVIŠĶAS turpmākas izmaiņas (tajā pašā vai
+vēlākā VO), kas norāda `sectionId: <sadaļu izveidojušās izmaiņas id>` un
+`itemId: null`. Nevis viena izmaiņa, kas izveido sadaļu UN pievieno pirmo
+pozīciju vienlaicīgi — tas prasītu piešķirt VIENU `id` gan jaunajai sadaļai,
+gan jaunajai pozīcijai, kas sajauktu id telpu (sadaļu un pozīciju id vairs
+nebūtu skaidri atšķirami pēc izcelsmes).
+
+**`deriveCurrentSections`** (`variationOrders/deriveCurrentState.ts`)
+`applyChange` tagad vispirms pārbauda `change.newSection` — ja iestatīts,
+pievieno tukšu sadaļu un atgriežas, NEMEKLĒJOT `change.sectionId` esošajās
+sadaļās (kas jaunai sadaļai vienalga neeksistētu pirms šīs izmaiņas).
+
+**Excel eksporta labojums (reāla kļūda, atrasta ieviešot šo funkciju):**
+`excel/export.ts` `exportBoqToWorkbook` iepriekš meklēja katras sadaļas
+bāzes versiju pēc MASĪVA INDEKSA (`state.sections[i]`), pieņemot, ka
+`currentSections.length === state.sections.length` vienmēr — tas bija
+patiess TIKAI tāpēc, ka VO līdz šim nevarēja pievienot sadaļas. Ar jaunām
+sadaļām šis pieņēmums lūst (jaunā sadaļa nobīda visu, kas seko tai masīvā).
+Izlabots uz meklēšanu PĒC ID (`Map` no `state.sections`), un jaunai sadaļai
+(bez bāzes atbilstības) padod SINTĒTISKU tukšu bāzes sadaļu (nevis `null`)
+— lai "Bāzes daudzums"/"Delta" kolonnas paliktu konsekventas visās lapās
+(jaunās sadaļas pozīcijām pareizi rāda "JAUNS"/pilnu daudzumu kā deltu),
+nevis klusi trūktu tikai šajā vienā lapā.
+
+**UI** (`VariationOrders.tsx`): sadaļas izvēlnē pirmā opcija ir "+ Jauna
+sadaļa" — izvēloties to, parādās nosaukuma/tāmes numura lauki (pozīcijas
+izvēlne paslēpta, jo jaunā sadaļa sākumā tukša). Sadaļu/pozīciju izvēlnes
+IZMAIŅAS PIEVIENOŠANAS formā balstās uz "preview" atvasinājumu (bāze +
+apstiprinātās VO + ŠĪS VO PAŠAS jau pievienotās izmaiņas), lai varētu
+izveidot sadaļu un TAJĀ PAŠĀ, vēl neapstiprinātajā VO uzreiz tai pievienot
+pozīcijas.
+
+#### Izpildes aktu uzskaite un atlikuma aprēķins (Sesija 19)
+
+Lietotāja pieprasījums: pirms VO izveides jāredz, cik no pašreizējā
+(bāze + apstiprinātās VO) apjoma jau ir izpildīts un apstiprināts ar
+izpildes aktiem, lai nesamazinātu/neizslēgtu apjomu, kas jau (daļēji)
+izpildīts.
+
+**Datu modelis (`schemaVersion` `6 -> 7`):** `models/executionRecord.ts` —
+`ExecutionRecord` (izpildes akts par VIENU atskaites periodu, piem. mēnesi
+— brīvs teksta `period` apzīmējums, nevis auto-numurēts, jo lietotāja
+prakse var atšķirties; `date`, `approvedBy`, `entries[]`) un
+`ExecutionRecordEntry` (`sectionId`, `itemId`, `executedQuantity` — ŠAJĀ
+PERIODĀ izpildītais, NEVIS kumulatīvs). `BoqState.executionRecords:
+ExecutionRecord[]`. **Append-only** — reiz saglabāts akts nav rediģējams/
+dzēšams šajā versijā (audit trail, konsekventi ar to, ka apstiprināta/
+noraidīta VO arī vairs nav rediģējama).
+
+**Kumulatīvais/atlikums VIENMĒR ATVASINĀTS, nekad glabāts** (tas pats
+princips kā "pašreizējais" VO stāvoklis) —
+`executionRecords/executionRecords.ts`:
+- `computeExecutedToDate(executionRecords, itemId)` — summē `entries`
+  visos periodos šai pozīcijai.
+- `computeRemainingQuantity(currentQuantity, executedToDate)` —
+  `currentQuantity - executedToDate`. `currentQuantity` ir PAŠREIZĒJAIS
+  (bāze + apstiprinātās VO) daudzums, NEVIS bāzes daudzums — jo jautājums
+  ir "cik vēl paliek NO LĪGUMĀ PAREDZĒTĀ apjoma tieši tagad", ne no
+  sākotnējās bāzes. Var atgriezt negatīvu vērtību (izpildīts vairāk par
+  paredzēto) — funkcija to neierobežo, UI parāda kā brīdinājumu (skat.
+  zemāk).
+
+**Validācija: brīdinājums, NEVIS bloķēšana** (apstiprināts ar lietotāju) —
+ja VO izmaiņa samazinātu/izslēgtu apjomu ZEM jau izpildītā, UI parāda
+brīdinājumu, bet ļauj saglabāt — var būt leģitīmi iemesli (strīds, akta
+kļūdas labošana), un lietotne apzināti neuzņemas šķīrējtiesneša lomu.
+
+**Ievade: manuāla, nevis Excel imports** (apstiprināts ar lietotāju šai
+versijai) — `ExecutionRecords.tsx` "Izpildes akti" cilne (rāda TIKAI pēc
+bāzes iesaldēšanas, tāpat kā "Izmaiņas (VO)"): jauna akta forma (periods/
+datums/apstiprinātājs) + PA SADAĻĀM (tāpat kā "Tāme" cilne) tabula ar
+kolonnām Nr./Nosaukums/Mērv./Pašreizējais/Izpildīts līdz šim (PIRMS šī
+akta)/Šajā periodā (ievade)/**Atlikums uz nākamo periodu** (dzīvi
+pārrēķināts, rakstot) — pēdējā lieto lietotāja pieprasīts tieši šo
+formulējumu. Rindas ar `atlikums < 0` vizuāli izceltas (`.over-executed`).
+Zem tam aktu vēstures tabula (periods/datums/apstiprinātājs/pozīciju
+skaits/kopā izpildīts šajā periodā).
+
+**Zināms ierobežojums (apzināti, laika trūkuma dēļ šai sesijai):** akta
+ievades tabula NAV virtualizēta (skat. "Pozīciju tabulas virtualizācija"
+zemāk) — reālam projektam ar tūkstošiem pozīciju (skat. Sesija 12, 12876
+pozīcijas) šī forma varētu palēnināties tāpat, kā `ItemsTable` pirms
+Sesijas 13 virtualizācijas. Nākotnes uzlabojums, ja reāla lietošana to
+parādīs kā problēmu.
+
+**Atlikuma rādīšana VO izveidē** (`VariationOrders.tsx`): izvēloties esošu
+pozīciju izmaiņas pievienošanas formā, parādās informācijas rinda
+"Pašreizējais daudzums / Izpildīts līdz šim / Pieejamais atlikums", un, ja
+ievadītā daudzuma korekcija/izslēgšana samazinātu apjomu zem jau izpildītā,
+parādās brīdinājuma teksts (dzeltens bloks, tāpat kā bāzes iesaldēšanas
+baneris) ar konkrētiem skaitļiem.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium):** izveidota VO ar jaunu
+sadaļu un tajā jaunu pozīciju (viena VO, divas secīgas izmaiņas) —
+apstiprinot parādās abas sadaļas "Tāme" cilnē ar pareiziem kopsavilkumiem;
+izveidots izpildes akts ar izpildītu daudzumu vienai pozīcijai — atlikums
+tabulā aprēķināts pareizi; jaunā VO izveides formā pareizi parādīts
+"Pieejamais atlikums"; mēģinot samazināt apjomu zem izpildītā, parādījās
+pareizs brīdinājuma teksts ar precīziem skaitļiem. Konsolē nav kļūdu.
 
 ### Favicon
 

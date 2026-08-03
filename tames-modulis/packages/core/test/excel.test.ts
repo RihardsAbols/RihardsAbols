@@ -401,6 +401,7 @@ function sampleStateWithApprovedVariationOrder(): BoqState {
     quantityDelta: 30,
     excluded: false,
     newItem: null,
+    newSection: null,
   };
   const excludeChange: VariationOrderChange = {
     id: "change-exclude",
@@ -409,6 +410,7 @@ function sampleStateWithApprovedVariationOrder(): BoqState {
     quantityDelta: 0,
     excluded: true,
     newItem: null,
+    newSection: null,
   };
 
   const vo = createVariationOrder([], {
@@ -494,5 +496,62 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
 
     // The unchanged item "c" (sec-2) never appears in the diff table.
     expect(sheet.getCell(19, 1).value).toBeNull();
+  });
+
+  it("renders a brand-new section (added by a VO) as its own sheet, with every item marked JAUNS, without misaligning existing sections", () => {
+    const state = sampleState();
+    state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+
+    const newSectionChange: VariationOrderChange = {
+      id: "new-section-1",
+      sectionId: "new-section-1",
+      itemId: null,
+      quantityDelta: 0,
+      excluded: false,
+      newItem: null,
+      newSection: { name: "Papildu darbi", estimateNumber: "2-1" },
+    };
+    const newItemChange: VariationOrderChange = {
+      id: "new-item-1",
+      sectionId: "new-section-1",
+      itemId: null,
+      quantityDelta: 0,
+      excluded: false,
+      newSection: null,
+      newItem: {
+        code: "1",
+        description: "Jauns darbs",
+        unit: "gab",
+        quantity: 7,
+        unitLaborCost: 1,
+        unitMaterialsCost: 1,
+        unitMechanismsCost: 1,
+      },
+    };
+    const vo = createVariationOrder([], {
+      title: "Jauns darbu bloks",
+      justification: "",
+      instructedBy: "",
+      date: "2026-01-10",
+    });
+    vo.status = "approved";
+    vo.changes = [newSectionChange, newItemChange];
+    state.variationOrders = [vo];
+
+    const workbook = exportBoqToWorkbook(state);
+
+    // Existing sections are still correctly matched to their own baseline
+    // (this is exactly the index-alignment bug a new section could cause).
+    const demSheet = workbook.getWorksheet("1.1_Dem.")!;
+    expect(demSheet.getCell(12, TAME_COLUMNS.totalAll + 2).value).toBe(100); // item "a" bāzes daudzums unaffected
+
+    const newSheet = workbook.getWorksheet("Papildu darbi")!;
+    expect(newSheet).toBeDefined();
+    const baseCol = TAME_COLUMNS.totalAll + 2;
+    const deltaCol = TAME_COLUMNS.totalAll + 3;
+    // header block (8 lines incl. estimateNumber) + blank + merged header + column header = row 11, first data row 12.
+    expect(newSheet.getCell(12, TAME_COLUMNS.quantity).value).toBe(7);
+    expect(newSheet.getCell(12, baseCol).value).toBe("JAUNS");
+    expect(newSheet.getCell(12, deltaCol).value).toBe(7);
   });
 });

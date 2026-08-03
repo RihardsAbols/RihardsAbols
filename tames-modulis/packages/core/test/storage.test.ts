@@ -236,6 +236,102 @@ describe("migrateToCurrent", () => {
     expect(migrated.variationOrders).toEqual([vo]);
   });
 
+  it("defaults executionRecords and backfills newSection: null on existing VO changes when migrating v6 data", () => {
+    const v6 = {
+      schemaVersion: 6,
+      projectId: "proj-13",
+      projectName: "v6 bez izpildes aktiem",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          changes: [
+            { id: "c1", sectionId: "sec-1", itemId: "item-1", quantityDelta: 5, excluded: false, newItem: null },
+          ],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+      ],
+    };
+    const migrated = migrateToCurrent(v6);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.executionRecords).toEqual([]);
+    expect(migrated.variationOrders[0].changes[0]).toMatchObject({ id: "c1", newSection: null });
+  });
+
+  it("preserves already-present executionRecords/newSection during migration", () => {
+    const executionRecord = {
+      id: "rec-1",
+      period: "2026-01",
+      date: "2026-01-31",
+      approvedBy: "Inženieris",
+      entries: [{ id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 10 }],
+      createdAt: "2026-01-31T00:00:00.000Z",
+      updatedAt: "2026-01-31T00:00:00.000Z",
+    };
+    const v6 = {
+      schemaVersion: 6,
+      projectId: "proj-14",
+      projectName: "v6 ar izpildes aktiem",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Jauna sadaļa",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          changes: [
+            {
+              id: "c1",
+              sectionId: "c1",
+              itemId: null,
+              quantityDelta: 0,
+              excluded: false,
+              newItem: null,
+              newSection: { name: "Papildu darbi", estimateNumber: "2-1" },
+            },
+          ],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [executionRecord],
+    };
+    const migrated = migrateToCurrent(v6);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.executionRecords).toEqual([executionRecord]);
+    expect(migrated.variationOrders[0].changes[0].newSection).toEqual({ name: "Papildu darbi", estimateNumber: "2-1" });
+  });
+
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {
     const v1 = { schemaVersion: 1, projectId: "proj-6", projectName: "v1 ar PVN", vatRate: 0.12, sections: [] };
     const migrated = migrateToCurrent(v1);
