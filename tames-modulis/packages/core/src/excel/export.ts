@@ -36,18 +36,144 @@ const COST_COLUMNS = [
   TAME_COLUMNS.totalAll,
 ];
 
+// Column widths (Excel "character" units) for a section sheet, so entered
+// texts/numbers are actually readable instead of clipped at the ~8.43-char
+// default - verified against a real 53-sheet/12876-item Līguma tāme where
+// descriptions and multi-digit money values were unreadable at default
+// width. "Nr.p.k." (col 1) is also reused as the label column for the
+// project/rekvizīti header block above the table (see
+// writeProjectHeaderBlock) - 7 is enough for item numbers ("1", "1.2"), and
+// header labels there are merged across columns 1-3 so they aren't
+// constrained by this narrow width.
+const COLUMN_WIDTHS: Record<number, number> = {
+  [TAME_COLUMNS.nrPk]: 7,
+  2: 3,
+  [TAME_COLUMNS.name]: 48,
+  [TAME_COLUMNS.unit]: 10,
+  [TAME_COLUMNS.quantity]: 11,
+  6: 3,
+  7: 3,
+  [TAME_COLUMNS.unitLabor]: 11,
+  [TAME_COLUMNS.unitMaterials]: 11,
+  [TAME_COLUMNS.unitMechanisms]: 11,
+  [TAME_COLUMNS.unitTotal]: 11,
+  12: 3,
+  [TAME_COLUMNS.totalLabor]: 13,
+  [TAME_COLUMNS.totalMaterials]: 13,
+  [TAME_COLUMNS.totalMechanisms]: 13,
+  [TAME_COLUMNS.totalAll]: 14,
+};
+
+const SUMMARY_COLUMN_WIDTHS = [32, 16, 14, 18, 14, 14, 18];
+
+/**
+ * Writes the project-level header block (Projekts, Būvuzņēmēja/Pasūtītāja
+ * rekvizīti, and - for section sheets - the section's manual tāmes
+ * numerācija) that appears at the top of every exported sheet, matching how
+ * real Līguma tāme documents repeat this boilerplate on each lokālā tāme
+ * page. Labels are merged across columns 1..labelEndCol and values across
+ * (labelEndCol+1)..valueEndCol so long company names/addresses aren't
+ * clipped by the narrow "Nr.p.k."/"Sadaļa" column width used elsewhere on
+ * the same sheet - the merge is row-scoped, so it doesn't affect those
+ * columns' width on other rows.
+ *
+ * Returns the number of rows written (the caller adds its own blank
+ * separator row before the next block).
+ */
+function writeProjectHeaderBlock(
+  sheet: ExcelJS.Worksheet,
+  state: BoqState,
+  labelEndCol: number,
+  valueEndCol: number,
+  estimateNumber?: string,
+): number {
+  const lines: Array<[string, string]> = [
+    ["Projekts:", state.projectName],
+    ["Būvuzņēmējs:", state.contractor.name],
+    ["Būvuzņēmēja reģ. Nr.:", state.contractor.regNr],
+    ["Būvuzņēmēja adrese:", state.contractor.address],
+    ["Pasūtītājs:", state.client.name],
+    ["Pasūtītāja reģ. Nr.:", state.client.regNr],
+    ["Pasūtītāja adrese:", state.client.address],
+  ];
+  if (estimateNumber !== undefined) {
+    lines.push(["Lokālā tāme Nr.:", estimateNumber]);
+  }
+
+  const valueStartCol = labelEndCol + 1;
+  lines.forEach(([label, value], i) => {
+    const row = i + 1;
+    if (labelEndCol > 1) {
+      sheet.mergeCells(row, 1, row, labelEndCol);
+    }
+    const labelCell = sheet.getCell(row, 1);
+    labelCell.value = label;
+    labelCell.font = HEADER_FONT;
+    if (valueEndCol > valueStartCol) {
+      sheet.mergeCells(row, valueStartCol, row, valueEndCol);
+    }
+    sheet.getCell(row, valueStartCol).value = value;
+  });
+
+  return lines.length;
+}
+
+/** Writes "Sastādīja:"/"Pārbaudīja:" signature lines below a sheet's table. Returns the last row written. */
+function writeSignatureBlock(
+  sheet: ExcelJS.Worksheet,
+  startRow: number,
+  state: BoqState,
+  labelEndCol: number,
+  valueEndCol: number,
+): number {
+  const lines: Array<[string, string]> = [
+    ["Sastādīja:", state.preparedBy],
+    ["Pārbaudīja:", state.checkedBy],
+  ];
+
+  const valueStartCol = labelEndCol + 1;
+  lines.forEach(([label, value], i) => {
+    const row = startRow + i;
+    if (labelEndCol > 1) {
+      sheet.mergeCells(row, 1, row, labelEndCol);
+    }
+    const labelCell = sheet.getCell(row, 1);
+    labelCell.value = label;
+    labelCell.font = HEADER_FONT;
+    if (valueEndCol > valueStartCol) {
+      sheet.mergeCells(row, valueStartCol, row, valueEndCol);
+    }
+    sheet.getCell(row, valueStartCol).value = value;
+  });
+
+  return startRow + lines.length - 1;
+}
+
 /** Writes one section as a worksheet and returns the row holding its "Tiešās izmaksas" total. */
-function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, section: BoqSection): number {
+function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, section: BoqSection, state: BoqState): number {
   const sheet = workbook.addWorksheet(sheetName);
 
-  sheet.mergeCells(1, TAME_COLUMNS.unitLabor, 1, TAME_COLUMNS.unitTotal);
-  sheet.getCell(1, TAME_COLUMNS.unitLabor).value = "Vienības izmaksa (EUR/vienība)";
-  sheet.mergeCells(1, TAME_COLUMNS.totalLabor, 1, TAME_COLUMNS.totalAll);
-  sheet.getCell(1, TAME_COLUMNS.totalLabor).value = "Kopējā izmaksa (EUR)";
-  sheet.getCell(1, TAME_COLUMNS.unitLabor).font = HEADER_FONT;
-  sheet.getCell(1, TAME_COLUMNS.totalLabor).font = HEADER_FONT;
+  for (const [col, width] of Object.entries(COLUMN_WIDTHS)) {
+    sheet.getColumn(Number(col)).width = width;
+  }
 
-  const headerRow = 2;
+  const headerLines = writeProjectHeaderBlock(
+    sheet,
+    state,
+    TAME_COLUMNS.name,
+    TAME_COLUMNS.totalLabor,
+    section.estimateNumber,
+  );
+  const mergedHeaderRow = headerLines + 2; // one blank separator row in between
+
+  sheet.mergeCells(mergedHeaderRow, TAME_COLUMNS.unitLabor, mergedHeaderRow, TAME_COLUMNS.unitTotal);
+  sheet.getCell(mergedHeaderRow, TAME_COLUMNS.unitLabor).value = "Vienības izmaksa (EUR/vienība)";
+  sheet.mergeCells(mergedHeaderRow, TAME_COLUMNS.totalLabor, mergedHeaderRow, TAME_COLUMNS.totalAll);
+  sheet.getCell(mergedHeaderRow, TAME_COLUMNS.totalLabor).value = "Kopējā izmaksa (EUR)";
+  sheet.getCell(mergedHeaderRow, TAME_COLUMNS.unitLabor).font = HEADER_FONT;
+  sheet.getCell(mergedHeaderRow, TAME_COLUMNS.totalLabor).font = HEADER_FONT;
+
+  const headerRow = mergedHeaderRow + 1;
   const headers: Array<[number, string]> = [
     [TAME_COLUMNS.nrPk, "Nr.p.k."],
     [TAME_COLUMNS.name, "Būvdarbu nosaukums"],
@@ -84,7 +210,9 @@ function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, sectio
     const costs = calculateItemCosts(item);
 
     sheet.getCell(row, TAME_COLUMNS.nrPk).value = item.code;
-    sheet.getCell(row, TAME_COLUMNS.name).value = item.description;
+    const nameCell = sheet.getCell(row, TAME_COLUMNS.name);
+    nameCell.value = item.description;
+    nameCell.alignment = { wrapText: true, vertical: "top" };
     sheet.getCell(row, TAME_COLUMNS.unit).value = item.unit;
     const qtyCell = sheet.getCell(row, TAME_COLUMNS.quantity);
     qtyCell.value = item.quantity;
@@ -136,7 +264,9 @@ function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, sectio
   directCell.numFmt = MONEY_FORMAT;
   directCell.font = HEADER_FONT;
 
-  for (const row of sheet.getRows(1, directTotalRow) ?? []) {
+  const signatureEndRow = writeSignatureBlock(sheet, directTotalRow + 2, state, TAME_COLUMNS.name, TAME_COLUMNS.totalLabor);
+
+  for (const row of sheet.getRows(1, signatureEndRow) ?? []) {
     row?.eachCell({ includeEmpty: false }, (cell) => {
       cell.font = { ...cell.font, name: "Arial" };
     });
@@ -151,27 +281,34 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   workbook.created = new Date(state.updatedAt);
 
   const summary = workbook.addWorksheet("KOPSAVILKUMS");
-  summary.getCell(1, 1).value = "Projekts:";
-  summary.getCell(1, 1).font = HEADER_FONT;
-  summary.getCell(1, 2).value = state.projectName;
+  SUMMARY_COLUMN_WIDTHS.forEach((width, i) => {
+    summary.getColumn(i + 1).width = width;
+  });
 
-  summary.getCell(2, 1).value = "Atlaides likme:";
-  summary.getCell(2, 2).value = state.discountRate;
-  summary.getCell(2, 2).numFmt = PERCENT_FORMAT;
+  const headerLines = writeProjectHeaderBlock(summary, state, 2, 7);
+  const ratesStartRow = headerLines + 2; // one blank separator row
+  const discountRateRow = ratesStartRow;
+  const overheadRateRow = ratesStartRow + 1;
+  const profitRateRow = ratesStartRow + 2;
+  const vatRateRow = ratesStartRow + 3;
 
-  summary.getCell(3, 1).value = "Virsizdevumu likme:";
-  summary.getCell(3, 2).value = state.overheadRate;
-  summary.getCell(3, 2).numFmt = PERCENT_FORMAT;
+  summary.getCell(discountRateRow, 1).value = "Atlaides likme:";
+  summary.getCell(discountRateRow, 2).value = state.discountRate;
+  summary.getCell(discountRateRow, 2).numFmt = PERCENT_FORMAT;
 
-  summary.getCell(4, 1).value = "Peļņas likme:";
-  summary.getCell(4, 2).value = state.profitRate;
-  summary.getCell(4, 2).numFmt = PERCENT_FORMAT;
+  summary.getCell(overheadRateRow, 1).value = "Virsizdevumu likme:";
+  summary.getCell(overheadRateRow, 2).value = state.overheadRate;
+  summary.getCell(overheadRateRow, 2).numFmt = PERCENT_FORMAT;
 
-  summary.getCell(5, 1).value = "PVN likme:";
-  summary.getCell(5, 2).value = state.vatRate;
-  summary.getCell(5, 2).numFmt = PERCENT_FORMAT;
+  summary.getCell(profitRateRow, 1).value = "Peļņas likme:";
+  summary.getCell(profitRateRow, 2).value = state.profitRate;
+  summary.getCell(profitRateRow, 2).numFmt = PERCENT_FORMAT;
 
-  const tableHeaderRow = 7;
+  summary.getCell(vatRateRow, 1).value = "PVN likme:";
+  summary.getCell(vatRateRow, 2).value = state.vatRate;
+  summary.getCell(vatRateRow, 2).numFmt = PERCENT_FORMAT;
+
+  const tableHeaderRow = vatRateRow + 2; // one blank separator row
   [
     "Sadaļa",
     "Tiešās izmaksas",
@@ -192,7 +329,7 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
 
   state.sections.forEach((section, i) => {
     const sheetName = sanitizeSheetName(section.name, usedSheetNames);
-    const directTotalRow = writeSectionSheet(workbook, sheetName, section);
+    const directTotalRow = writeSectionSheet(workbook, sheetName, section, state);
     const row = firstSectionRow + i;
     const sectionSummary = boqSummary.sections[i];
 
@@ -201,10 +338,13 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
       formula: `${quoteSheetName(sheetName)}!${colLetter(TAME_COLUMNS.totalAll)}${directTotalRow}`,
       result: sectionSummary.directTotal,
     };
-    summary.getCell(row, 3).value = { formula: `B${row}*$B$2`, result: sectionSummary.discountAmount };
+    summary.getCell(row, 3).value = {
+      formula: `B${row}*$B$${discountRateRow}`,
+      result: sectionSummary.discountAmount,
+    };
     summary.getCell(row, 4).value = { formula: `B${row}-C${row}`, result: sectionSummary.directTotalAfterDiscount };
-    summary.getCell(row, 5).value = { formula: `D${row}*$B$3`, result: sectionSummary.overhead };
-    summary.getCell(row, 6).value = { formula: `D${row}*$B$4`, result: sectionSummary.profit };
+    summary.getCell(row, 5).value = { formula: `D${row}*$B$${overheadRateRow}`, result: sectionSummary.overhead };
+    summary.getCell(row, 6).value = { formula: `D${row}*$B$${profitRateRow}`, result: sectionSummary.profit };
     summary.getCell(row, 7).value = {
       formula: `D${row}+E${row}+F${row}`,
       result: sectionSummary.totalWithMarkup,
@@ -246,7 +386,7 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   const vatRow = totalsRow + 1;
   summary.getCell(vatRow, 1).value = "PVN";
   const vatCell = summary.getCell(vatRow, 7);
-  vatCell.value = { formula: `G${totalsRow}*$B$5`, result: boqSummary.vatAmount };
+  vatCell.value = { formula: `G${totalsRow}*$B$${vatRateRow}`, result: boqSummary.vatAmount };
   vatCell.numFmt = MONEY_FORMAT;
 
   const grandTotalRow = vatRow + 1;
@@ -257,7 +397,9 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   grandTotalCell.numFmt = MONEY_FORMAT;
   grandTotalCell.font = HEADER_FONT;
 
-  for (const row of summary.getRows(1, grandTotalRow) ?? []) {
+  const signatureEndRow = writeSignatureBlock(summary, grandTotalRow + 2, state, 2, 7);
+
+  for (const row of summary.getRows(1, signatureEndRow) ?? []) {
     row?.eachCell({ includeEmpty: false }, (cell) => {
       cell.font = { ...cell.font, name: "Arial" };
     });

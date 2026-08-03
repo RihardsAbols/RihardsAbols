@@ -1,5 +1,5 @@
 import { summarizeBoq } from "@tames-modulis/core";
-import type { BoqItem, BoqSection, BoqState, StorageAdapter } from "@tames-modulis/core";
+import type { BoqItem, BoqSection, BoqState, CompanyDetails, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ItemsTable } from "./ItemsTable.js";
 
@@ -23,7 +23,7 @@ function newItem(): BoqItem {
 }
 
 function newSection(): BoqSection {
-  return { id: crypto.randomUUID(), name: "Jauna sadaļa", items: [] };
+  return { id: crypto.randomUUID(), name: "Jauna sadaļa", estimateNumber: "", items: [] };
 }
 
 function eur(value: number): string {
@@ -103,6 +103,18 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
       ...s,
       sections: s.sections.map((sec, i) => (i === sectionIndex ? { ...sec, name } : sec)),
     }));
+
+  const updateSectionEstimateNumber = (sectionIndex: number, estimateNumber: string) =>
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec, i) => (i === sectionIndex ? { ...sec, estimateNumber } : sec)),
+    }));
+
+  const updateContractor = (patch: Partial<CompanyDetails>) =>
+    update((s) => ({ ...s, contractor: { ...s.contractor, ...patch } }));
+
+  const updateClient = (patch: Partial<CompanyDetails>) =>
+    update((s) => ({ ...s, client: { ...s.client, ...patch } }));
 
   const removeSection = (sectionIndex: number) =>
     update((s) => ({ ...s, sections: s.sections.filter((_, i) => i !== sectionIndex) }));
@@ -218,6 +230,53 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
       </div>
       {status && <p className="status">{status}</p>}
 
+      <details className="project-details">
+        <summary>Projekta rekvizīti (Excel eksportam)</summary>
+        <div className="details-grid">
+          <fieldset>
+            <legend>Būvuzņēmējs</legend>
+            <label>
+              Nosaukums
+              <input value={state.contractor.name} onChange={(e) => updateContractor({ name: e.target.value })} />
+            </label>
+            <label>
+              Reģ. Nr.
+              <input value={state.contractor.regNr} onChange={(e) => updateContractor({ regNr: e.target.value })} />
+            </label>
+            <label>
+              Adrese
+              <input
+                value={state.contractor.address}
+                onChange={(e) => updateContractor({ address: e.target.value })}
+              />
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Pasūtītājs</legend>
+            <label>
+              Nosaukums
+              <input value={state.client.name} onChange={(e) => updateClient({ name: e.target.value })} />
+            </label>
+            <label>
+              Reģ. Nr.
+              <input value={state.client.regNr} onChange={(e) => updateClient({ regNr: e.target.value })} />
+            </label>
+            <label>
+              Adrese
+              <input value={state.client.address} onChange={(e) => updateClient({ address: e.target.value })} />
+            </label>
+          </fieldset>
+          <label>
+            Sastādīja (vārds, uzvārds)
+            <input value={state.preparedBy} onChange={(e) => update((s) => ({ ...s, preparedBy: e.target.value }))} />
+          </label>
+          <label>
+            Pārbaudīja (vārds, uzvārds)
+            <input value={state.checkedBy} onChange={(e) => update((s) => ({ ...s, checkedBy: e.target.value }))} />
+          </label>
+        </div>
+      </details>
+
       <div className="rates">
         <label>
           Atlaide (%)
@@ -262,6 +321,13 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
         return (
           <div className="section" key={section.id}>
             <div className="section-header">
+              <input
+                className="section-estimate-number"
+                placeholder="Nr."
+                title="Tāmes numurs (piem. 1-1)"
+                value={section.estimateNumber}
+                onChange={(e) => updateSectionEstimateNumber(sectionIndex, e.target.value)}
+              />
               <input
                 className="section-name"
                 value={section.name}

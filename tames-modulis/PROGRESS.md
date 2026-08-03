@@ -756,6 +756,93 @@ diff'ot lasāmā veidā.
 - ✅ Manuāli pārbaudīts reālā headless Chromium: favicon linktags klāt,
   iepriekšējais 404 novērsts, nav jaunu konsoles kļūdu.
 
+## Sesija 17: Projekta rekvizīti, tāmes numerācija, Excel salasāmība — ✅ pabeigts
+
+**Uzdevums:** reāls lietotāja feedback pēc pirmās pilnās izmēģināšanas ar
+īsto VELVE tāmes failu (imports, atlaides tests, eksports) — trīs punkti:
+1. Excel eksporta tabulu noformējums (rindu/kolonnu platums) nelasāms.
+2. Katrā eksportētajā lapā jāparādās iepriekš iestatītiem laukiem: Projekta
+   nosaukums, Būvuzņēmēja rekvizīti, Pasūtītāja rekvizīti, un zem tabulas
+   "Vārds, uzvārds" kurš sastādīja/pārbaudīja tāmi.
+3. Tāmes numerācija pašlaik ņemta no Excel lapas nosaukuma, bet tie ne
+   vienmēr sakrīt reālos failos — vajag manuāli ievadāmu numuru katrai
+   sadaļai.
+
+**Lēmumi (apstiprināti ar lietotāju pirms ieviešanas):**
+- Būvuzņēmēja/Pasūtītāja rekvizīti un Sastādīja/Pārbaudīja: **strukturēti
+  apakšlauki** (nosaukums/reģ.nr./adrese katram uzņēmumam), nevis brīvs
+  teksts.
+- Visi šie lauki: **projekta līmenī** (vieni visam projektam, rādās
+  identiski katrā eksportētajā lapā), nevis pa sadaļām.
+- Tāmes numerācija: **tikai teksts lapas iekšienē** ("Lokālā tāme Nr.: X"),
+  Excel lapas NOSAUKUMS paliek pēc sadaļas nosaukuma kā līdz šim (nevis
+  numurs to aizstāj).
+
+**Implementēts:**
+- `packages/core/src/models/boq.ts` — jauns `CompanyDetails` tips
+  (`name`/`regNr`/`address`), `BoqState.contractor`/`client`/`preparedBy`/
+  `checkedBy` (projekta līmenī), `BoqSection.estimateNumber` (sadaļas
+  līmenī). `CURRENT_SCHEMA_VERSION` `4 -> 5`.
+- `packages/core/src/storage/migrations/index.ts` — jauna `4: (data) =>
+  ...` migrācija ar defaultiem trūkstošiem laukiem, saglabājot jau
+  esošos.
+- `packages/core/src/excel/export.ts` — pilnībā pārstrādāts: jauns
+  `writeProjectHeaderBlock` (galvenes bloks katrā lapā, arī
+  `KOPSAVILKUMS`) un `writeSignatureBlock` (paraksta rindas zem katras
+  tabulas), abi ar DINAMISKI aprēķinātiem rindu numuriem (nevis
+  hardkodētiem), lai formulas nesalūztu, ja bloku garums nākotnē mainās.
+  Jauns `COLUMN_WIDTHS` (kolonnu platumi lasāmībai) un `wrapText` uz
+  "Būvdarbu nosaukums" kolonnas datu šūnām. `import.ts` NEMAINĪJĀS —
+  `estimateNumber` importa laikā vienmēr tukšs (nevar droši atvasināt no
+  faila), lietotājs aizpilda manuāli.
+- `packages/core/src/index.ts` — barelā pievienoti `CompanyDetails`,
+  `createEmptyCompanyDetails`, un (izlaists Sesijā 15 pēc pārskatīšanas)
+  `DEFAULT_DISCOUNT_RATE`.
+- `packages/web/src/components/ProjectEditor.tsx` — jauns sakļaujams
+  `<details>` "Projekta rekvizīti (Excel eksportam)" bloks ar
+  Būvuzņēmēja/Pasūtītāja apakšlaukiem un Sastādīja/Pārbaudīja laukiem;
+  jauns "Nr." lauks katras sadaļas galvenē (`estimateNumber`).
+- `packages/web/src/App.css` — stili jaunajiem elementiem
+  (`.project-details`, `.details-grid`, `.section-estimate-number`).
+
+**Testi:** `packages/core/test/storage.test.ts` — 4 jauni migrācijas testi
+(v4->v5 defaults, preserve, jau iepriekš pievienotais contractor/client
+lauks migrācijas laikā). `packages/core/test/excel.test.ts` — 6 jauni
+testi (galvenes bloks sadaļas lapā, tukšs tāmes numurs, paraksta bloks,
+`KOPSAVILKUMS` galvene/paraksts, kolonnu platumi, imports joprojām strādā
+pēc jaunā eksporta formāta). Kopā **49/49 core testi zaļi** (41 + 8 jauni).
+
+**Manuāla pārbaude (Playwright, reāls Chromium):**
+- Izveidots projekts, aizpildīti visi jaunie lauki (Būvuzņēmējs, Pasūtītājs,
+  Sastādīja, Pārbaudīja), pievienota sadaļa ar "Nr." = "1-1" un pozīcija.
+- Eksportēts, LEJUPIELĀDĒTAIS `.xlsx` fails pārbaudīts tieši (`openpyxl` +
+  neapstrādāta XML inspekcija, ne tikai `exportBoqToWorkbook` tiešā
+  izsaukumā): galvenes bloks (rindas 1-8), tabula, tiešo izmaksu rinda,
+  paraksta bloks (rindas 15-16) — visi pareizajās vietās ar pareizu saturu.
+- Kolonnu platumi apstiprināti tieši XML `<cols>` elementā (`unzip` +
+  `grep`) — atklāts, ka `openpyxl`'s `column_dimensions` vārdnīca rāda
+  `None` blakus kolonnām ar VIENĀDU platumu (exceljs tās konsolidē vienā
+  `<col min max width>` diapazonā) — tas IZSKATĀS pēc trūkstoša platuma
+  lasot ar `openpyxl`, bet reālajā failā/Excel/LibreOffice platums pareizi
+  attiecas uz visu diapazonu. Nozīmīgs atradums nākotnes pārbaudēm — nevis
+  kļūda pašā eksportā.
+- Pēc "Saglabāt" + lapas pārlādes visi jaunie lauki (Būvuzņēmēja nosaukums,
+  sadaļas "Nr.") saglabājas nemainīgi.
+- Reāls 47-sadaļu VELVE imports pārbaudīts arī pēc šīm izmaiņām — katrai
+  sadaļai parādās (tukšs, rediģējams) "Nr." lauks, imports strādā tāpat kā
+  iepriekš (~11.4s import+atvēršana šajā vidē), nav konsoles kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 49/49 testi zaļi (8 jauni šai funkcijai).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi: ~158KB -> ~160KB galvenais bundle, `exceljs` chunk
+  nemainīgs).
+- ✅ Excel eksporta salasāmība un jaunie rekvizītu/paraksta lauki pārbaudīti
+  gan uz reāla lejupielādēta faila, gan unit testos.
+- ✅ Reāls VELVE imports joprojām strādā pareizi ar jauno datu modeli.
+- ✅ Migrācija (v4 bez jaunajiem laukiem -> v5 ar defaultiem; v4 ar jau
+  iestatītiem laukiem -> saglabāti) testēta.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
@@ -766,4 +853,6 @@ sākšanas. Iespējamais kandidāts:
    Sesijā 15, kad lietotājs apstiprināja, ka ar diskontu vien pietiek.
 
 Nav zināmu citu nekritisku/kosmētisku trūkumu šobrīd — jauns kandidāts
-jāapstiprina ar lietotāju pirms sākšanas.
+jāapstiprina ar lietotāju pirms sākšanas. Ieteicams turpināt testēšanu ar
+reālu VELVE failu un jaunajiem laukiem (rekvizīti, tāmes numerācija), lai
+atrastu nākamo reālo trūkumu.

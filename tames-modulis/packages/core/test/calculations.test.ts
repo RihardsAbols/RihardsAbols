@@ -18,7 +18,7 @@ function item(overrides: Partial<BoqItem> = {}): BoqItem {
 }
 
 function section(items: BoqItem[], overrides: Partial<BoqSection> = {}): BoqSection {
-  return { id: "sec-1", name: "Sadaļa", items, ...overrides };
+  return { id: "sec-1", name: "Sadaļa", estimateNumber: "", items, ...overrides };
 }
 
 describe("round2", () => {

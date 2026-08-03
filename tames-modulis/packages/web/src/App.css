@@ -124,6 +124,40 @@ body {
   color: #2a2;
 }
 
+.project-details {
+  margin-bottom: 1.5rem;
+}
+
+.project-details summary {
+  cursor: pointer;
+  font-weight: bold;
+  color: #555;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.details-grid fieldset {
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.details-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 0.5rem;
+}
+
+.details-grid input {
+  width: 100%;
+}
+
 .rates {
   display: flex;
   gap: 1.5rem;
@@ -163,6 +197,19 @@ body {
 }
 
 .section-name:focus {
+  border-bottom-color: #999;
+  outline: none;
+}
+
+.section-estimate-number {
+  width: 4.5rem;
+  flex-shrink: 0;
+  font-weight: bold;
+  border: none;
+  border-bottom: 1px solid transparent;
+}
+
+.section-estimate-number:focus {
   border-bottom-color: #999;
   outline: none;
 }

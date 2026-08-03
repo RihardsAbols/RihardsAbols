@@ -37,7 +37,35 @@ const migrations: Record<number, Migration> = {
     ...data,
     discountRate: typeof data.discountRate === "number" ? data.discountRate : DEFAULT_DISCOUNT_RATE,
   }),
+  // v4 had no contractor/client rekvizīti, preparedBy/checkedBy (Excel
+  // export header/signature fields), or per-section estimateNumber.
+  4: (data) => ({
+    ...data,
+    contractor: migrateCompanyDetails(data.contractor),
+    client: migrateCompanyDetails(data.client),
+    preparedBy: typeof data.preparedBy === "string" ? data.preparedBy : "",
+    checkedBy: typeof data.checkedBy === "string" ? data.checkedBy : "",
+    sections: Array.isArray(data.sections)
+      ? data.sections.map((section) => migrateSectionV4ToV5(section as Record<string, unknown>))
+      : data.sections,
+  }),
 };
+
+function migrateCompanyDetails(value: unknown): { name: string; regNr: string; address: string } {
+  const v = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  return {
+    name: typeof v.name === "string" ? v.name : "",
+    regNr: typeof v.regNr === "string" ? v.regNr : "",
+    address: typeof v.address === "string" ? v.address : "",
+  };
+}
+
+function migrateSectionV4ToV5(section: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...section,
+    estimateNumber: typeof section.estimateNumber === "string" ? section.estimateNumber : "",
+  };
+}
 
 function migrateSectionV2ToV3(section: Record<string, unknown>): Record<string, unknown> {
   return {

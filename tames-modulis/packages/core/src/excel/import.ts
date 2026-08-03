@@ -25,6 +25,10 @@ import { detectImportColumns } from "./headerDetection.js";
  * Sheet name becomes the section id/name and freshly generated ids are
  * assigned to items, since Excel carries no equivalent of our internal ids —
  * round-tripping JSON storage through Excel and back is lossy by nature.
+ * `estimateNumber` (manual tāmes numerācija, e.g. "1-1") starts empty on
+ * import - real files often number lokālās tāmes differently than the sheet
+ * is named, so it can't be inferred and is left for the user to fill in
+ * (skat. ProjectEditor.tsx "Nr." lauks).
  */
 export function importBoqFromWorkbook(
   workbook: ExcelJS.Workbook,
@@ -63,7 +67,7 @@ export function importBoqFromWorkbook(
       return;
     }
 
-    sections.push({ id: sheet.name, name: sheet.name, items });
+    sections.push({ id: sheet.name, name: sheet.name, estimateNumber: "", items });
   });
 
   const state = createEmptyBoqState(projectId, projectName);

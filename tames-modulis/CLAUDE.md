@@ -9,7 +9,11 @@ Npm workspace ar divām pakotnēm:
 
 ## Struktūra (`packages/core`)
 
-- `src/models/boq.ts` — datu modelis (`BoqState`, `BoqSection`, `BoqItem`).
+- `src/models/boq.ts` — datu modelis (`BoqState`, `BoqSection`, `BoqItem`,
+  `CompanyDetails`). `BoqState.contractor`/`client` (`CompanyDetails` —
+  nosaukums/reģ.nr./adrese) un `preparedBy`/`checkedBy` ir projekta līmenī;
+  `BoqSection.estimateNumber` ir manuāli ievadāma tāmes numerācija sadaļas
+  līmenī — skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
 - `src/storage/StorageAdapter.ts` — glabāšanas saskarne
   (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
   (fails <-> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
@@ -26,8 +30,8 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4`, `migrateToCurrent` atbalsta pakāpenisku
-  migrāciju pievienošanu arī turpmāk.
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5`, `migrateToCurrent` atbalsta
+  pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
   (`calculateSectionDirectTotal`), un pilns kopsavilkums ar atlaidi,
@@ -49,9 +53,14 @@ Npm workspace ar divām pakotnēm:
     teksta" zemāk.
   - `export.ts` — `exportBoqToWorkbook`/`exportBoqToBuffer`: viena darblapa
     (`KOPSAVILKUMS`) ar pieņēmumiem (likmes) un projekta kopsavilkumu, un pa
-    darblapai katrai sadaļai ar pozīcijām. Šūnas raksta ar **formulām**
-    (nevis tikai gala vērtībām), pievienojot arī kešotu `result`, lai fails
-    rāda pareizas vērtības uzreiz, pat ja neviens neatver to Excel/LibreOffice.
+    darblapai katrai sadaļai ar pozīcijām. Katra lapa sākas ar projekta/
+    rekvizītu galvenes bloku (`writeProjectHeaderBlock`) un beidzas ar
+    paraksta bloku (`writeSignatureBlock`) — skat. "Projekta rekvizīti un
+    tāmes numerācija" zemāk. Kolonnu platumi (`COLUMN_WIDTHS`) iestatīti
+    tieši, lai ievadītie teksti/cipari būtu lasāmi (nevis Excel noklusējuma
+    ~8.43 rakstzīmes). Šūnas raksta ar **formulām** (nevis tikai gala
+    vērtībām), pievienojot arī kešotu `result`, lai fails rāda pareizas
+    vērtības uzreiz, pat ja neviens neatver to Excel/LibreOffice.
     `exportBoqToBuffer` atgriež `ArrayBuffer` (nevis Node `Buffer`), lai
     strādātu arī brauzerī.
   - `import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`: kolonnas
@@ -99,13 +108,17 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   dinamiski importē `@tames-modulis/core/excel` failu izvēles apstrādē,
   nevis statiski.
 - `src/components/ProjectEditor.tsx` — sadaļu/pozīciju rediģēšana, likmju
-  (atlaide/virsizdevumi/peļņa/PVN) rediģēšana, dzīvs kopsavilkums (`summarizeBoq`
-  pārrēķināts katrā render), "Saglabāt" (IndexedDB), "Eksportēt Excel"
-  (lejupielādē `.xlsx`) un "Importēt Excel (pārrakstīt sadaļas)" (imports
-  esošā, jau atvērtā projektā — skat. "Imports esošā projektā" zemāk).
-  Eksporta/importa pogas importē `exportBoqToBuffer`/`importBoqFromBuffer`
-  ar dinamisku `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis
-  statiski augšā failā — skat. "Bundle izmērs / code-splitting" zemāk.
+  (atlaide/virsizdevumi/peļņa/PVN) rediģēšana, projekta rekvizītu
+  (Būvuzņēmējs/Pasūtītājs/Sastādīja/Pārbaudīja, sakļaujams `<details>` bloks)
+  un sadaļu tāmes numuru (`estimateNumber`, "Nr." lauks sadaļas galvenē)
+  rediģēšana — skat. "Projekta rekvizīti un tāmes numerācija" zemāk. Dzīvs
+  kopsavilkums (`summarizeBoq` pārrēķināts katrā render), "Saglabāt"
+  (IndexedDB), "Eksportēt Excel" (lejupielādē `.xlsx`) un "Importēt Excel
+  (pārrakstīt sadaļas)" (imports esošā, jau atvērtā projektā — skat.
+  "Imports esošā projektā" zemāk). Eksporta/importa pogas importē
+  `exportBoqToBuffer`/`importBoqFromBuffer` ar dinamisku
+  `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis statiski augšā
+  failā — skat. "Bundle izmērs / code-splitting" zemāk.
 - `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
   `ProjectEditor.tsx` katrai sadaļai.
@@ -134,6 +147,12 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   `overheadRate`/`profitRate`. Noklusējums `DEFAULT_DISCOUNT_RATE = 0`
   (bez atlaides). Skat. "Atlaide (diskonts)" zemāk pilnu pamatojumu un
   aprēķina secību.
+- **Būvuzņēmēja/Pasūtītāja rekvizīti un Sastādīja/Pārbaudīja ir projekta
+  līmenī, strukturēti apakšlauki** (nosaukums/reģ.nr./adrese katram
+  uzņēmumam), nevis brīvs teksts vai sadaļas līmeņa lauki — apstiprināts ar
+  lietotāju. **Tāmes numerācija (`estimateNumber`) ir sadaļas līmenī**,
+  brīvs teksts, neatkarīgs no sadaļas nosaukuma UN no Excel eksporta lapas
+  nosaukuma. Skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
 - **Aprēķini noapaļo tikai vienreiz, beigās** (`summarizeBoq`) — sadaļu un
   kopējās summas tiek saskaitītas no nenoapaļotiem starprezultātiem, lai
   daudzu sīku pozīciju gadījumā noapaļošanas kļūda nesakrātos.
@@ -375,6 +394,89 @@ pirms "Virsizdevumi" (atbilstoši aprēķina secībai), un "Atlaide: ..."
 rinda gan sadaļas, gan projekta kopsavilkumā parādās TIKAI, ja
 `discountRate !== 0` — lai UX projektiem bez atlaides paliktu identisks
 iepriekšējam (nav lieku rindu ar "0.00 €").
+
+### Projekta rekvizīti un tāmes numerācija
+
+Sesijā 17 pievienoti, pēc reālas lietošanas ar reālu VELVE tāmes failu
+saņemtā feedback (Excel eksporta salasāmība, trūkstoši rekvizītu/paraksta
+lauki, nepieciešamība manuāli ievadīt tāmes numuru):
+
+**Datu modelis (`schemaVersion` `4 -> 5`):** `BoqState.contractor`/`client`
+(`CompanyDetails` — `name`/`regNr`/`address`), `preparedBy`/`checkedBy`
+(vārds/uzvārds teksta lauki) — projekta līmenī, VIENI visam projektam
+(apstiprināts ar lietotāju, nevis pa sadaļām). `BoqSection.estimateNumber`
+— brīvs teksts (piem. "1-1"), sadaļas līmenī, manuāli ievadāms.
+
+**Kāpēc manuāla tāmes numerācija, nevis atvasināta no sadaļas/lapas
+nosaukuma:** reāli Līguma tāmju faili numurē lokālās tāmes ("Lokālā tāme
+Nr. 1-1") citādi, nekā ir nosaukta pati Excel lapa (piem. lapa "DEM",
+numurs "1-1") — apstiprināts, ka nosaukumi ne vienmēr sakrīt. `import.ts`
+tāpēc atstāj `estimateNumber` tukšu importējot (nevar to droši atvasināt no
+faila), lietotājs to aizpilda manuāli redaktorā.
+
+**`estimateNumber` NEAIZSTĀJ Excel eksporta lapas nosaukumu** (apstiprināts
+ar lietotāju) — lapas nosaukums joprojām nāk no `section.name` (skat.
+`sanitizeSheetName`), numurs parādās tikai kā teksts pašas lapas iekšienē
+("Lokālā tāme Nr.: X"). Tas nozīmē arī `KOPSAVILKUMS` lapas formulas, kas
+atsaucas uz sadaļu lapām pēc nosaukuma, nav ietekmētas.
+
+**Excel eksportā** (`excel/export.ts`) katra lapa (arī `KOPSAVILKUMS`)
+sākas ar `writeProjectHeaderBlock`: "Projekts:", "Būvuzņēmējs:" +
+reģ.nr./adrese, "Pasūtītājs:" + reģ.nr./adrese, un (tikai sadaļu lapās)
+"Lokālā tāme Nr.:". Katra lapa beidzas ar `writeSignatureBlock`:
+"Sastādīja:"/"Pārbaudīja:" zem pozīciju tabulas/kopsavilkuma tabulas.
+Rindu skaitīšana ir DINAMISKA (`headerLines`/`ratesStartRow`/
+`tableHeaderRow` u.tml. aprēķināti no iepriekšējo bloku garuma, nevis
+hardkodēti), lai nākotnē pievienojot/noņemot rindas nebūtu jāatjaunina
+katra formula atsevišķi.
+
+**Garās galvenes/paraksta rindu etiķetes (piem. "Būvuzņēmēja reģ. Nr.:",
+16-22 rakstzīmes) ir apvienotas (`mergeCells`) pāri kolonnām 1-3** (nevis
+tikai kolonnai 1, kas sadaļu lapās ir šaurā "Nr.p.k." kolonna, platums 7) —
+apvienošana ir rindas-specifiska (row-scoped), tāpēc neietekmē šo kolonnu
+platumu citās (datu) rindās tajā pašā lapā. Vērtību šūnas tāpat apvienotas
+pāri vairākām kolonnām, lai uzņēmuma nosaukumam/adresei būtu pietiekami
+vietas. `KOPSAVILKUMS` lapā (tikai 7 kolonnas) etiķetes/vērtības apvienotas
+šaurāk (1-2 / 3-7), jo kolonna 1 tur jau ir plaša (32 rakstzīmes, dubultā
+kalpo arī "Sadaļa" nosaukumu kolonnai).
+
+**Kolonnu platumi un teksta aplaušana (`COLUMN_WIDTHS`, teksta
+salasāmība):** lietotāja feedback pēc reāla VELVE faila eksporta — Excel
+noklusējuma ~8.43 rakstzīmju platums padarīja ievadītos tekstus/ciparus
+nelasāmus. Katrai sadaļu lapas kolonnai iestatīts platums tieši
+(`sheet.getColumn(n).width`), un "Būvdarbu nosaukums" kolonnai (platākā, 48
+rakstzīmes) papildus `wrapText: true` uz katras datu šūnas, lai garāki
+apraksti aplaužas nevis tiek apgriezti. **Pārbaudot rezultātu ar
+`openpyxl`** atklājās, ka blakus kolonnas ar VIENĀDU platumu tiek
+konsolidētas vienā `<col min=X max=Y width=W>` XML ierakstā (exceljs
+optimizācija) — `openpyxl`'s `column_dimensions` vārdnīca tad rāda `None`
+starprindas kolonnām (tikai diapazona pirmajai), kas IZSKATĀS pēc
+trūkstoša platuma, bet reālajā XML/Excel/LibreOffice platums pareizi
+attiecas uz visu diapazonu — pārbaudīts tieši ar `unzip` + XML inspekciju,
+nevis tikai `openpyxl`.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, ieskaitot lejupielādētā
+`.xlsx` faila satura pārbaudi ar `openpyxl` un neapstrādātu XML):**
+izveidots projekts, aizpildīti Būvuzņēmēja/Pasūtītāja rekvizīti un
+Sastādīja/Pārbaudīja, pievienota sadaļa ar "Nr." = "1-1", eksportēts —
+lejupielādētajā failā visi lauki parādās pareizajās rindās/kolonnās (galvenes
+bloks, tabula, tiešo izmaksu rinda, paraksta bloks), kolonnu platumi
+atbilst iestatītajiem. Pēc "Saglabāt" + lapas pārlādes rekvizīti un tāmes
+numurs saglabājas. Reāls 47-sadaļu VELVE imports pārbaudīts arī pēc šīm
+izmaiņām — katrai sadaļai parādās (tukšs) "Nr." lauks, rediģējams, nav
+konsoles kļūdu, imports strādā tāpat kā iepriekš.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 49/49 testi zaļi (8 jauni: migrācijas v4->v5 defaults/preserve,
+  Excel eksporta galvenes/paraksta bloka saturs, kolonnu platumi).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi — jaunie lauki ir daži simti baitu papildu koda/UI,
+  nevis jauna atkarība).
+- ✅ Manuāli pārbaudīts ar reālu lejupielādētu `.xlsx` failu (ne tikai
+  `exportBoqToWorkbook` tiešā izsaukumā) — galvenes/paraksta bloki, kolonnu
+  platumi apstiprināti gan lietotnē, gan pašā failā.
+- ✅ Reāls 47-sadaļu VELVE fails joprojām importējas pareizi ar jauno
+  `estimateNumber` lauku.
 
 ### Favicon
 

@@ -1,10 +1,12 @@
-export type { BoqItem, BoqSection, BoqState } from "./models/boq.js";
+export type { BoqItem, BoqSection, BoqState, CompanyDetails } from "./models/boq.js";
 export {
   createEmptyBoqState,
+  createEmptyCompanyDetails,
   CURRENT_SCHEMA_VERSION,
   DEFAULT_VAT_RATE,
   DEFAULT_OVERHEAD_RATE,
   DEFAULT_PROFIT_RATE,
+  DEFAULT_DISCOUNT_RATE,
 } from "./models/boq.js";
 export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";
 // FileSystemStorageAdapter is intentionally NOT re-exported here: it imports

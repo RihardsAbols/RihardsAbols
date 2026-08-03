@@ -15,7 +15,25 @@ export interface BoqItem {
 export interface BoqSection {
   id: string;
   name: string;
+  /**
+   * Manuāli ievadāms tāmes numurs (piem. "1-1"), neatkarīgs no sadaļas
+   * nosaukuma un no Excel eksporta lapas nosaukuma - reāli Līguma tāmju
+   * faili bieži numurē lokālās tāmes citādi, nekā ir nosaukta pati lapa
+   * (skat. excel/export.ts "Lokālā tāme Nr." Excel eksportā).
+   */
+  estimateNumber: string;
   items: BoqItem[];
+}
+
+/** Uzņēmuma rekvizīti (Būvuzņēmējam vai Pasūtītājam). */
+export interface CompanyDetails {
+  name: string;
+  regNr: string;
+  address: string;
+}
+
+export function createEmptyCompanyDetails(): CompanyDetails {
+  return { name: "", regNr: "", address: "" };
 }
 
 export interface BoqState {
@@ -34,17 +52,29 @@ export interface BoqState {
    * Projekta līmenī, ne pa sadaļām/pozīcijām.
    */
   discountRate: number;
+  /**
+   * Būvuzņēmēja un Pasūtītāja rekvizīti, un tāmes sastādītāja/pārbaudītāja
+   * vārds/uzvārds - projekta līmenī (vieni visam projektam), rādās katrā
+   * Excel eksporta lapā (skat. excel/export.ts).
+   */
+  contractor: CompanyDetails;
+  client: CompanyDetails;
+  preparedBy: string;
+  checkedBy: string;
   sections: BoqSection[];
   createdAt: string;
   updatedAt: string;
 }
 
-// v4 added the project-level discountRate (atskaitīta no tiešajām izmaksām
-// pirms virsizdevumiem/peļņas). v3 replaced the single `unitPrice` with a
-// darba alga/materiāli/mehānismi split and added overheadRate/profitRate,
+// v5 pievienoja projekta līmeņa contractor/client rekvizītus un
+// preparedBy/checkedBy (Excel eksporta galvenes/paraksta lauki), kā arī
+// sadaļas līmeņa estimateNumber (manuāla tāmes numerācija). v4 pievienoja
+// projekta līmeņa discountRate (atskaitīta no tiešajām izmaksām pirms
+// virsizdevumiem/peļņas). v3 replaced the single `unitPrice` with a darba
+// alga/materiāli/mehānismi split and added overheadRate/profitRate,
 // matching the Līguma tāme format used by the izpildes-akts-validacija skill
 // (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;
@@ -68,6 +98,10 @@ export function createEmptyBoqState(projectId: string, projectName: string): Boq
     overheadRate: DEFAULT_OVERHEAD_RATE,
     profitRate: DEFAULT_PROFIT_RATE,
     discountRate: DEFAULT_DISCOUNT_RATE,
+    contractor: createEmptyCompanyDetails(),
+    client: createEmptyCompanyDetails(),
+    preparedBy: "",
+    checkedBy: "",
     sections: [],
     createdAt: now,
     updatedAt: now,

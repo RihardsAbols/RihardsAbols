@@ -36,6 +36,7 @@ describe("FileSystemStorageAdapter", () => {
     state.sections.push({
       id: "sec-1",
       name: "Zemes darbi",
+      estimateNumber: "1-1",
       items: [
         {
           id: "item-1",
@@ -110,6 +111,10 @@ describe("migrateToCurrent", () => {
     expect(migrated.overheadRate).toBe(DEFAULT_OVERHEAD_RATE);
     expect(migrated.profitRate).toBe(DEFAULT_PROFIT_RATE);
     expect(migrated.discountRate).toBe(DEFAULT_DISCOUNT_RATE);
+    expect(migrated.contractor).toEqual({ name: "", regNr: "", address: "" });
+    expect(migrated.client).toEqual({ name: "", regNr: "", address: "" });
+    expect(migrated.preparedBy).toBe("");
+    expect(migrated.checkedBy).toBe("");
   });
 
   it("preserves an already-present discountRate instead of overwriting it during migration", () => {
@@ -126,6 +131,50 @@ describe("migrateToCurrent", () => {
     const migrated = migrateToCurrent(v3);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(migrated.discountRate).toBe(0.07);
+  });
+
+  it("defaults contractor/client/preparedBy/checkedBy/estimateNumber when migrating v4 data that predates them", () => {
+    const v4 = {
+      schemaVersion: 4,
+      projectId: "proj-9",
+      projectName: "v4 bez rekvizītiem",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      sections: [{ id: "sec-1", name: "Sadaļa", items: [] }],
+    };
+    const migrated = migrateToCurrent(v4);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.contractor).toEqual({ name: "", regNr: "", address: "" });
+    expect(migrated.client).toEqual({ name: "", regNr: "", address: "" });
+    expect(migrated.preparedBy).toBe("");
+    expect(migrated.checkedBy).toBe("");
+    expect(migrated.sections[0].estimateNumber).toBe("");
+  });
+
+  it("preserves already-present contractor/client/preparedBy/checkedBy/estimateNumber during migration", () => {
+    const v4 = {
+      schemaVersion: 4,
+      projectId: "proj-10",
+      projectName: "v4 ar rekvizītiem",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "SIA Būvnieks", regNr: "40001234567", address: "Rīga" },
+      client: { name: "SIA Pasūtītājs", regNr: "40007654321", address: "Rīga" },
+      preparedBy: "Jānis Bērziņš",
+      checkedBy: "Anna Kalniņa",
+      sections: [{ id: "sec-1", name: "Sadaļa", estimateNumber: "1-1", items: [] }],
+    };
+    const migrated = migrateToCurrent(v4);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.contractor).toEqual({ name: "SIA Būvnieks", regNr: "40001234567", address: "Rīga" });
+    expect(migrated.client).toEqual({ name: "SIA Pasūtītājs", regNr: "40007654321", address: "Rīga" });
+    expect(migrated.preparedBy).toBe("Jānis Bērziņš");
+    expect(migrated.checkedBy).toBe("Anna Kalniņa");
+    expect(migrated.sections[0].estimateNumber).toBe("1-1");
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {
