@@ -843,16 +843,56 @@ pēc jaunā eksporta formāta). Kopā **49/49 core testi zaļi** (41 + 8 jauni).
 - ✅ Migrācija (v4 bez jaunajiem laukiem -> v5 ar defaultiem; v4 ar jau
   iestatītiem laukiem -> saglabāti) testēta.
 
-## 🔜 NĀKAMAIS UZDEVUMS
+**Lietotāja apstiprinājums pēc Sesijas 17:** lietotājs pats izmēģināja
+Sesijas 17 izmaiņas (kolonnu platumi/rekvizīti/tāmes numerācija) reālā
+lietotnē ar reālo VELVE failu un apstiprināja, ka strādā. Nav ziņots par
+neatbilstībām — nekas atklāts, kas jālabo pirms nākamā uzdevuma.
 
-Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
-sākšanas. Iespējamais kandidāts:
+## 🔜 NĀKAMAIS UZDEVUMS — Tāmes izmaiņu (variation orders) vadība
 
-1. **Sarežģītāka PVN loģika** (piem. dažādas PVN likmes pa pozīcijām/
-   sadaļām), ja tas izrādās reāls prasību lauks — apzināti atlikts
-   Sesijā 15, kad lietotājs apstiprināja, ka ar diskontu vien pietiek.
+**Šis ir lietotāja tieši pieprasītais nākamais uzdevums** (nevis kandidātu
+saraksts, kas jāapstiprina) — formulēts kā FIDIC inženiera/Cost Estimate
+Manager perspektīva: jāspēj izveidot un kontrolēt tāmes izmaiņas pēc
+sākotnējās (bāzes) tāmes apstiprināšanas. Trīs nosauktie gadījumi:
 
-Nav zināmu citu nekritisku/kosmētisku trūkumu šobrīd — jauns kandidāts
-jāapstiprina ar lietotāju pirms sākšanas. Ieteicams turpināt testēšanu ar
-reālu VELVE failu un jaunajiem laukiem (rekvizīti, tāmes numerācija), lai
-atrastu nākamo reālo trūkumu.
+1. **Jauna tāme** — sākotnējā/bāzes tāme (pamatā jau eksistējošā
+   funkcionalitāte — projekta izveide, sadaļas, pozīcijas), bet, iespējams,
+   vajadzīga skaidra "šī ir apstiprinātā bāzes tāme" atzīme/"iesaldēšana",
+   pret kuru tiks salīdzinātas turpmākās izmaiņas.
+2. **Apjomu samazinājums** — pozīcijas tiek IZSLĒGTAS pilnībā (omitted) VAI
+   sākotnēji paredzētie daudzumi tiek samazināti (bet pozīcija paliek).
+3. **Apjomu palielinājums** — sākotnēji plānotie darbu apjomi tiek
+   palielināti.
+
+**Šis ir liels, vēl NEPRECIZĒTS uzdevums** — pirms ieviešanas nākamajai
+sesijai JĀJAUTĀ lietotājam (nesākt kodēt uzreiz), vismaz par:
+- **Datu modelis:** vai katrai pozīcijai jāglabā `baselineQuantity`
+  (sākotnējais apjoms) + `currentQuantity` (pašreizējais), un starpība
+  atvasināta? Vai jāglabā pilna izmaiņu vēsture (katra VO/izmaiņas
+  pieprasījuma numurs, datums, pamatojums, statuss) - t.i. audit trail, ne
+  tikai divi skaitļi?
+- **Izmaiņu grupēšana:** vai "izmaiņa" ir numurēts, datēts objekts (piem.
+  "VO Nr. 3"), kas var skart VAIRĀKAS pozīcijas vienlaicīgi (kā reālā FIDIC
+  praksē), vai vienkārši rediģējami "pašreizējie" daudzumi ar diff skatu
+  pret bāzi (bez atsevišķas VO entītes)?
+- **"Izslēgta" pozīcija:** vai tas ir tas pats, kas `quantity = 0`, vai
+  vajag atsevišķu `excluded`/`omitted` karogu (jo `0` daudzums var nozīmēt
+  arī "vēl nav sākts", ne "atcelts")?
+- **Statusa/apstiprinājuma plūsma:** vai izmaiņām vajag statusu (piem.
+  ierosināts/apstiprināts/noraidīts), instruējošo pusi, datumu — atbilstoši
+  reālai FIDIC Variation Order administrēšanai, vai pietiek ar vienkāršu
+  "pašreizējā vērtība atšķiras no bāzes" bez formālas plūsmas?
+- **UI:** vajag salīdzinājuma/diff skatu (bāze pret pašreizējo, delta
+  daudzums, delta izmaksas) pa pozīciju UN summēts pa sadaļu/projektu —
+  kāds izkārtojums (blakus kolonnas esošajā tabulā, atsevišķa "Izmaiņu"
+  cilne, abi)?
+- **Excel eksports:** vai izmaiņu pārskatam (piem. "Izmaiņu reģistrs" vai
+  "Variation Order Summary") vajag savu darblapu, līdzīgi reālu FIDIC
+  projektu praksei (redzēts arī `izpildes-akts-validacija` skill domēnā)?
+
+**Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu un
+CLAUDE.md pilnībā, tad UZREIZ uzdot lietotājam precizējošus jautājumus par
+augstāk minētajiem punktiem (līdzīgi kā Sesijās 15/17 pirms ieviešanas),
+NEVIS pieņemt lēmumus vienpusēji — šis ir sarežģītāks datu modeļa lēmums
+nekā jebkas iepriekšējais (skar `BoqItem`/`BoqSection` struktūru, iespējams
+jaunu schemaVersion, UI, un Excel eksportu vienlaicīgi).
