@@ -111,6 +111,10 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   `ProjectEditor.tsx` katrai sadaļai.
 - `src/App.tsx` — savieno sarakstu un redaktoru, tur vienīgā
   `IndexedDbStorageAdapter` instance.
+- `index.html` — `<link rel="icon">` ir inline SVG `data:` URI (zils
+  noapaļots kvadrāts ar "T"), nevis atsevišķs binārs fails `public/`
+  direktorijā — nav vajadzīgs jauns build solis/asset, un faila saturs ir
+  redzams tieši `index.html` (skat. arī zemāk "Favicon").
 
 ## Lēmumi
 
@@ -371,6 +375,21 @@ pirms "Virsizdevumi" (atbilstoši aprēķina secībai), un "Atlaide: ..."
 rinda gan sadaļas, gan projekta kopsavilkumā parādās TIKAI, ja
 `discountRate !== 0` — lai UX projektiem bez atlaides paliktu identisks
 iepriekšējam (nav lieku rindu ar "0.00 €").
+
+### Favicon
+
+Sesijā 16 pievienots vienkāršs favicon — zils noapaļots kvadrāts ar baltu
+"T" monogrammu, inline SVG kā `data:image/svg+xml,...` `<link rel="icon">`
+`index.html` `<head>`. Apzināti NAV atsevišķs binārs fails
+`public/favicon.ico`/`.png` — inline SVG datu URI nozīmē, ka nav vajadzīga
+jauna `public/` direktorija, jauns build/copy solis, vai binārā faila
+glabāšana repo (kas nav diff-friendly); saturs ir tieši lasāms/rediģējams
+`index.html` iekšienē kā jebkurš cits marķējums. SVG (ne PNG/ICO), jo
+mērogojas bez kvalitātes zuduma jebkurā tab izmērā un ir mazāks par
+ekvivalentu bitmapu. Pirms tam pārlūka konsolē katrā lapas ielādē bija
+`favicon.ico` 404 (nekritiski, bet redzams "trokšņa" avots
+`console --errors` pārbaudēs, tai skaitā Sesijas 15 manuālajā pārbaudē) —
+tas tagad novērsts.
 
 ## Palaišana
 

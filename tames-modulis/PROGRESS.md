@@ -703,14 +703,67 @@ skat. zemāk piezīmi):**
 - ✅ UX regresija pārbaudīta: `discountRate=0` gadījumā UI izskatās
   identiski iepriekšējam (nav redzamas "Atlaide" rindas).
 
+## Sesija 16: Favicon — ✅ pabeigts
+
+**Uzdevums:** kandidāts #1 no Sesijas 15 atlikušā saraksta — favicon
+(nekritisks kosmētisks trūkums, `packages/web` iepriekš nemaz nedeklarēja
+`<link rel="icon">`, tāpēc pārlūks katrā ielādē pieprasīja noklusējuma
+`/favicon.ico`, kas atgrieza 404).
+
+**Lēmums:** inline SVG kā `data:` URI tieši `index.html` `<link
+rel="icon">`, nevis binārs fails `public/favicon.ico`/`.png`. Vienkāršs
+dizains — zils (`#2563eb`) noapaļots kvadrāts (`rx=7` no 32×32 viewBox) ar
+baltu "T" monogrammu ("Tāmju modulis"), centrēts teksts. Pamatojums: (a)
+nav vajadzīga jauna `public/` direktorija vai build/copy solis — Vite
+kopē `public/` saturu neizmainītu, bet šeit pat tas nav nepieciešams; (b)
+SVG mērogojas bez kvalitātes zuduma jebkurā tab/bookmark izmērā, un ir
+mazāks par ekvivalentu PNG/ICO; (c) saturs paliek redzams/rediģējams
+tieši `index.html` iekšienē, nav atsevišķa binārā faila repo, ko nevar
+diff'ot lasāmā veidā.
+
+**Implementēts:**
+- `packages/web/index.html` — `<link rel="icon" type="image/svg+xml"
+  href="data:image/svg+xml,...">` pievienots `<head>`, pirms `<title>`
+  aiz. SVG saturs pārbaudīts kā derīgs XML (`xml.dom.minidom.parseString`
+  pēc URL-decode) pirms iestrādāšanas.
+
+**Manuāla pārbaude:**
+- Renderēts atsevišķi ar headless Chromium (SVG datu URI dekodēts un
+  atvērts kā samazināts HTML iesaiņojums), lai pirms iestrādāšanas
+  vizuāli apstiprinātu, ka ikona izskatās pareizi (noapaļots zils
+  kvadrāts, centrēts baltais "T"). Piezīme par pašu pārbaudes rīku: šīs
+  vides headless Chromium `--screenshot` karogam ir savdabīga kļūda —
+  KVADRĀTA formas logs (piem. `--window-size=200,200`) apgriež
+  ekrānuzņēmumu vertikāli aptuveni pie 72% augstuma NEATKARĪGI no lapas
+  satura (pat vienkāršam `<rect>` bez teksta/noapaļošanas); ar
+  taisnstūra logu (piem. `200,300`) tas pats saturs renderējas pareizi.
+  Tas ir šīs headless vides/binārā artefakts, ne SVG vai koda kļūda —
+  atzīmēts šeit, ja nākotnē atkal jāizmanto ekrānuzņēmumi šajā vidē.
+- `npm run build:web` (`tsc --noEmit` + `vite build`) veiksmīgs,
+  `dist/index.html` satur jauno `<link rel="icon">`.
+- Palaists `npm run dev:web`, atvērts reālā headless Chromium (Playwright,
+  `--headless=new`, tāpat kā Sesijā 15): `link[rel="icon"]` klāt DOM ar
+  gaidīto `data:image/svg+xml,...` `href`; **NULLE 404 pieprasījumu** un
+  **NULLE konsoles kļūdu** visā lapas ielādē — apstiprina, ka iepriekšējais
+  `favicon.ico` 404 ir novērsts un nekas cits netika salauzts.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Typecheck tīrs, `vite build` veiksmīgs (bundle izmēri nemainīgi —
+  inline datu URI ir daži simti baitu `index.html` iekšienē, nevis jauna
+  atkarība vai chunk).
+- ✅ Core testi neskarti (izmaiņas tikai `packages/web/index.html`) — 41/41
+  joprojām zaļi.
+- ✅ Manuāli pārbaudīts reālā headless Chromium: favicon linktags klāt,
+  iepriekšējais 404 novērsts, nav jaunu konsoles kļūdu.
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
-sākšanas. Iespējamie kandidāti:
+sākšanas. Iespējamais kandidāts:
 
-1. **Favicon** — joprojām neaizskarts, nekritiski.
-2. **Sarežģītāka PVN loģika** (piem. dažādas PVN likmes pa pozīcijām/
+1. **Sarežģītāka PVN loģika** (piem. dažādas PVN likmes pa pozīcijām/
    sadaļām), ja tas izrādās reāls prasību lauks — apzināti atlikts
    Sesijā 15, kad lietotājs apstiprināja, ka ar diskontu vien pietiek.
 
-Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.
+Nav zināmu citu nekritisku/kosmētisku trūkumu šobrīd — jauns kandidāts
+jāapstiprina ar lietotāju pirms sākšanas.
