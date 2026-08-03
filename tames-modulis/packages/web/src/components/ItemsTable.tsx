@@ -1,4 +1,5 @@
-import type { BoqItem } from "@tames-modulis/core";
+import { computeExecutedToDate, computeRemainingQuantity } from "@tames-modulis/core";
+import type { BoqItem, ExecutionRecord } from "@tames-modulis/core";
 import { useState } from "react";
 
 const ROW_HEIGHT = 33;
@@ -18,6 +19,17 @@ interface ItemsTableProps {
    * salasāmas tajā pašā izkārtojumā.
    */
   readOnly?: boolean;
+  /**
+   * Kad padots un nav tukšs, pievieno pastāvīgas "Izpildīts"/"Atlikums"
+   * kolonnas VISĀM pozīcijām uzreiz (skat. PROGRESS.md Sesija 22) - pretstatā
+   * VariationOrders.tsx, kur atlikums redzams tikai pa vienai pozīcijai VO
+   * izveides formā. Nepadots/tukšs masīvs (projektam vēl nav neviena
+   * izpildes akta, vai bāze vēl nav iesaldēta) nozīmē kolonnas vispār
+   * nerenderējas - konsekventi ar to pašu `showExecution` karogu, ko lieto
+   * Excel eksports (`excel/export.ts`), lai UI un eksportētais fails rāda
+   * vienu un to pašu ainu.
+   */
+  executionRecords?: ExecutionRecord[];
 }
 
 /**
@@ -28,8 +40,11 @@ interface ItemsTableProps {
  * import+render take ~17-26s. Row height is a fixed estimate (not measured
  * per-row), which is fine here since every row has the same layout.
  */
-export function ItemsTable({ items, onUpdateItem, onRemoveItem, readOnly = false }: ItemsTableProps) {
+export function ItemsTable({ items, onUpdateItem, onRemoveItem, readOnly = false, executionRecords }: ItemsTableProps) {
   const [scrollTop, setScrollTop] = useState(0);
+
+  const showExecution = (executionRecords?.length ?? 0) > 0;
+  const columnCount = showExecution ? 10 : 8;
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
   const endIndex = Math.min(items.length, startIndex + VISIBLE_ROWS + OVERSCAN * 2);
@@ -52,19 +67,30 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem, readOnly = false
             <th>Darba alga</th>
             <th>Materiāli</th>
             <th>Mehānismi</th>
+            {showExecution && (
+              <>
+                <th>Izpildīts</th>
+                <th>Atlikums</th>
+              </>
+            )}
             <th />
           </tr>
         </thead>
         <tbody>
           {topSpacerHeight > 0 && (
             <tr aria-hidden="true" style={{ height: topSpacerHeight }}>
-              <td colSpan={8} />
+              <td colSpan={columnCount} />
             </tr>
           )}
           {items.slice(startIndex, endIndex).map((item, i) => {
             const itemIndex = startIndex + i;
+            const executedToDate = showExecution ? computeExecutedToDate(executionRecords!, item.id) : 0;
+            const remaining = showExecution ? computeRemainingQuantity(item.quantity, executedToDate) : 0;
+            const rowClassName = [item.excluded ? "excluded-row" : null, showExecution && remaining < 0 ? "over-executed" : null]
+              .filter(Boolean)
+              .join(" ") || undefined;
             return (
-              <tr key={item.id} className={item.excluded ? "excluded-row" : undefined} style={{ height: ROW_HEIGHT }}>
+              <tr key={item.id} className={rowClassName} style={{ height: ROW_HEIGHT }}>
                 <td>
                   <input
                     value={item.code}
@@ -123,6 +149,12 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem, readOnly = false
                     onChange={(e) => onUpdateItem(itemIndex, { unitMechanismsCost: Number(e.target.value) })}
                   />
                 </td>
+                {showExecution && (
+                  <>
+                    <td>{executedToDate}</td>
+                    <td>{remaining}</td>
+                  </>
+                )}
                 <td>
                   {!readOnly && (
                     <button aria-label="Dzēst pozīciju" onClick={() => onRemoveItem(itemIndex)}>
@@ -135,7 +167,7 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem, readOnly = false
           })}
           {bottomSpacerHeight > 0 && (
             <tr aria-hidden="true" style={{ height: bottomSpacerHeight }}>
-              <td colSpan={8} />
+              <td colSpan={columnCount} />
             </tr>
           )}
         </tbody>

@@ -168,7 +168,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
 - `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
   `ProjectEditor.tsx` katrai sadaļai. `readOnly` props atspējo ievadi pēc
-  bāzes iesaldēšanas (skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk).
+  bāzes iesaldēšanas, `executionRecords` props pievieno pastāvīgas
+  "Izpildīts"/"Atlikums" kolonnas (skat. "Tāmes izmaiņu (Variation Order)
+  vadība" zemāk).
 - `src/App.tsx` — savieno sarakstu un redaktoru, tur vienīgā
   `IndexedDbStorageAdapter` instance.
 - `index.html` — `<link rel="icon">` ir inline SVG `data:` URI (zils
@@ -944,6 +946,61 @@ darblapas, "Forma 3" tips) divos līmeņos:
 - ✅ Manuāli pārbaudīts pret REĀLU izpildes akta failu gan core, gan UI
   līmenī (Playwright) — 0 nesakritušu pozīciju reālajā datu apakškopā, kur
   bija pieejama atbilstoša tāme.
+
+#### Pastāvīgs atlikuma pārskats "Tāme" cilnē (Sesija 22)
+
+Līdz Sesijai 22 "Pieejamais atlikums" bija redzams TIKAI pa vienai pozīcijai
+`VariationOrders.tsx` VO izveides formā. Lietotājs apstiprināja (jautāts
+tieši pirms ieviešanas) pievienot pastāvīgas "Izpildīts"/"Atlikums"
+kolonnas TIEŠI ItemsTable komponentē "Tāme" cilnē (nevis atsevišķu
+"Atlikumi" cilni/skatu) — konsekventi ar to, kas jau tika pievienots Excel
+eksportam Sesijā 20 (skat. augšā "Izpildes akti Excel eksportā"), tāpēc UI
+un eksportētais fails tagad rāda to pašu ainu.
+
+**Implementēts** (tikai `packages/web`, `packages/core` nemainīts —
+`computeExecutedToDate`/`computeRemainingQuantity` jau bija pieejami no
+Sesijas 19): `ItemsTable.tsx` pieņem jaunu opcionālu `executionRecords?:
+ExecutionRecord[]` propu. Kad padots un nav tukšs (`showExecution` karogs,
+tas pats nosacījums kā `excel/export.ts`'s `state.executionRecords.length >
+0`), pievieno divas papildu kolonnas TABULAS BEIGĀS (aiz "Mehānismi", pirms
+dzēšanas pogas kolonnas) — "Izpildīts" (`computeExecutedToDate`) un
+"Atlikums" (`computeRemainingQuantity`), abas TIKAI LASĀMAS (vienkāršs
+teksts, ne `<input>`, jo šīs vērtības vienmēr atvasinātas, nekad tieši
+rediģējamas). Rindas ar `atlikums < 0` iegūst `over-executed` klasi —
+LIETO TO PAŠU CSS klasi/stilu, ko jau `ExecutionEntryTable.tsx` (selektors
+`App.css` paplašināts uz `.execution-entry-table tr.over-executed,
+.items-table tr.over-executed`, nevis dublēts stils), lai pārsniegtā
+apjoma marķējums izskatītos identiski abās vietās. `ProjectEditor.tsx`
+padod `executionRecords={state.executionRecords}` — projektiem BEZ izpildes
+aktiem (`[]`) vai pirms bāzes iesaldēšanas kolonnas nemaz nerenderējas,
+UX paliek identisks iepriekšējam (backward compatible).
+
+Virtualizācijas spacer-rindu `colSpan` mainīts dinamiski (8 vai 10 atkarībā
+no `showExecution`), lai ritjoslas augstums paliktu pareizs abos
+gadījumos — tā pati tehnika, kas jau CLAUDE.md dokumentēta "Pozīciju
+tabulas virtualizācija".
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, ieskaitot ekrānuzņēmumu
+vizuālai pārbaudei):** divi sintētiski projekti — viens ar izpildes aktu
+(3 pozīcijas: daļēji izpildīta, pārsniegta, bez izpildes), otrs bez tā.
+Projektā AR izpildi: galvenes rindā parādās "Izpildīts"/"Atlikums" pareizajā
+vietā; pozīcijai ar daudzumu 100 un izpildītu 40 rāda Izpildīts=40,
+Atlikums=60; pozīcijai ar daudzumu 50 un izpildītu 70 (pārsniegums) rāda
+Izpildīts=70, Atlikums=-20, RINDA VIZUĀLI IZCELTA SARKANI (`.over-executed`,
+apstiprināts arī ar ekrānuzņēmumu); pozīcijai bez izpildes rāda Izpildīts=0,
+Atlikums=10. Projektā BEZ izpildes aktiem: kolonnas VISPĀR NEPARĀDĀS (tabula
+identiska iepriekšējam 8-kolonnu izkārtojumam) — apstiprina backward
+compatibility. Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: nemainīts, 98/98 testi joprojām zaļi (izmaiņas bija tikai
+  `packages/web`).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs, bundle izmēri
+  praktiski nemainīgi (jauns kods tikai render loģikā, nav jaunas
+  atkarības).
+- ✅ Manuāli pārbaudīts ar Playwright, ieskaitot vizuālu apstiprinājumu
+  (ekrānuzņēmums) pārsniegtā apjoma iezīmējumam un backward compatibility
+  projektam bez izpildes aktiem.
 
 ### Favicon
 

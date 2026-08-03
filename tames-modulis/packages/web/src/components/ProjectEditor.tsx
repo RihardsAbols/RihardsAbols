@@ -394,6 +394,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
                   onUpdateItem={(itemIndex, patch) => updateItem(sectionIndex, itemIndex, patch)}
                   onRemoveItem={(itemIndex) => removeItem(sectionIndex, itemIndex)}
                   readOnly={baselineLocked}
+                  executionRecords={state.executionRecords}
                 />
                 {!baselineLocked && <button onClick={() => addItem(sectionIndex)}>+ Pozīcija</button>}
 

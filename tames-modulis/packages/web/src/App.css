@@ -578,7 +578,8 @@ body {
   width: 5rem;
 }
 
-.execution-entry-table tr.over-executed {
+.execution-entry-table tr.over-executed,
+.items-table tr.over-executed {
   background: #fff0f0;
   color: #b00;
 }

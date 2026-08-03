@@ -1306,9 +1306,48 @@ akta lapai un dzīvi pārrēķinātiem sakrita/nesakrita skaitiem -> apstiprinā
   (`packages/web/package.json`/lock atgriezti sākotnējā stāvoklī) — projekts
   Playwright kā pastāvīgu atkarību neiegūst.
 
+## Sesija 22: Pastāvīgs atlikuma pārskats "Tāme" cilnē — ✅ pabeigts
+
+**Uzdevums:** kandidāts #2 no Sesijas 21 atlikušā saraksta.
+
+**Lēmums (apstiprināts ar lietotāju, jautāts tieši pirms ieviešanas):**
+kandidāta apraksts pieļāva divus variantus — kolonnas esošajā "Tāme"
+tabulā VAI atsevišķa "Atlikumi" cilne/skats. Lietotājs izvēlējās PIRMO
+(kolonnas esošajā tabulā) — konsekventi ar to, kas jau tika pievienots
+Excel eksportam Sesijā 20, vienkāršāk, izmanto jau esošo virtualizēto
+tabulu.
+
+**Implementēts:** skat. CLAUDE.md "Pastāvīgs atlikuma pārskats 'Tāme'
+cilnē (Sesija 22)" pilnu tehnisko aprakstu — `ItemsTable.tsx` jauns
+opcionāls `executionRecords` props, divas jaunas TIKAI LASĀMAS
+"Izpildīts"/"Atlikums" kolonnas (redzamas TIKAI, ja projektam ir vismaz
+viens izpildes akts — tas pats nosacījums, kas jau Excel eksportam),
+pārsniegtā apjoma rindas iezīmētas ar to pašu `.over-executed` CSS klasi,
+ko jau lietoja `ExecutionEntryTable.tsx`. Tikai `packages/web` mainīts —
+`packages/core` aprēķinu funkcijas (`computeExecutedToDate`/
+`computeRemainingQuantity`) jau bija pieejamas kopš Sesijas 19.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, ieskaitot
+ekrānuzņēmumu):** divi sintētiski projekti — ar izpildes aktu (3
+pozīcijas: daļēji izpildīta 40/100, pārsniegta 70/50, bez izpildes) un bez
+tā. Kolonnas parādījās pareizajā vietā ar pareiziem skaitļiem, pārsniegtā
+apjoma rinda vizuāli izcelta sarkani (apstiprināts arī ekrānuzņēmumā),
+projektam bez izpildes aktiem kolonnas vispār neparādījās (backward
+compatible). Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: nemainīts, 98/98 testi joprojām zaļi.
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs, bundle izmēri
+  praktiski nemainīgi.
+- ✅ Manuāli pārbaudīts ar Playwright, ieskaitot vizuālu apstiprinājumu
+  (ekrānuzņēmums) un backward compatibility pārbaudi.
+- ⚠️ Playwright atkal tika instalēts tikai pagaidu pārbaudei un pēc tam
+  noņemts (tāpat kā Sesijā 21) — projekts Playwright kā pastāvīgu atkarību
+  neiegūst.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Sesijas 20-21 apstiprinātie uzdevumi ir pabeigti. Atlikušie kandidāti no
+Sesijas 20-22 apstiprinātie uzdevumi ir pabeigti. Atlikušais kandidāts no
 iepriekšējā saraksta (NAV apstiprināts uzdevums, jājautā lietotājam
 nākamās sesijas sākumā):
 
@@ -1316,12 +1355,8 @@ nākamās sesijas sākumā):
    audit-trail izvēle) — vai reālā lietošanā radīsies vajadzība labot kļūdu
    akta ievadē (piem. nepareizi ievadīts skaitlis) bez jauna korekcijas
    akta veidošanas?
-2. **"Pieejamais atlikums" redzams TIKAI VO izveides formā** — vai vajag arī
-   pastāvīgu "atlikums" kolonnu/skatu galvenajā "Tāme" cilnē (vai atsevišķā
-   pārskata skatā), lai redzētu visu pozīciju atlikumus vienlaicīgi, nevis
-   tikai vienu pozīciju uzreiz VO formā?
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-21) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, pie kura no
-augstāk numurētajiem kandidātiem (ja kāda vispār) strādāt tālāk — nevis
-pieņemt, ka viens no tiem ir automātiski nākamais uzdevums.
+Sesijas 18-22) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai strādāt
+pie augstāk minētā vienīgā atlikušā kandidāta, vai lietotājam ir cits
+uzdevums — nevis pieņemt, ka tas ir automātiski nākamais uzdevums.
