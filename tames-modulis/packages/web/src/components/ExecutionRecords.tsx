@@ -1,4 +1,4 @@
-import { createExecutionRecord, deriveCurrentSections } from "@tames-modulis/core";
+import { createExecutionRecord, deriveCurrentSections, voidExecutionRecord } from "@tames-modulis/core";
 import type { BoqState, ExecutionRecordEntry } from "@tames-modulis/core";
 import type { ParsedExecutionActSheet } from "@tames-modulis/core/excel";
 import { useMemo, useRef, useState } from "react";
@@ -47,6 +47,12 @@ interface ActImportState {
  * lielam projektam (tūkstošiem pozīciju, skat. PROGRESS.md Sesija 12) šī
  * forma citādi palēninātos tāpat, kā `ItemsTable` pirms Sesijas 13
  * virtualizācijas.
+ *
+ * Akts pēc saglabāšanas NAV tieši rediģējams/dzēšams - kļūdu (piem.
+ * nepareizi ievadīts skaitlis) labo ar ANULĒŠANU (`voidExecutionRecord`,
+ * "Anulēt" poga vēstures tabulā) + jauna, pareiza akta izveidi, nevis
+ * pārrakstot šo pašu, lai saglabātos pilns audit trail (skat. CLAUDE.md
+ * "Izpildes aktu/VO anulēšana (Sesija 23)").
  */
 export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
   const [isCreating, setIsCreating] = useState(false);
@@ -55,6 +61,8 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
   const [actImport, setActImport] = useState<ActImportState | null>(null);
   const [actImportLoading, setActImportLoading] = useState(false);
   const [actImportError, setActImportError] = useState<string | null>(null);
+  const [voidingRecordId, setVoidingRecordId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const excelModuleRef = useRef<ExcelModule | null>(null);
   const actFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -130,6 +138,18 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
     const created = { ...createExecutionRecord(actImport.recordForm), entries };
     onUpdate((s) => ({ ...s, executionRecords: [...s.executionRecords, created] }));
     setActImport(null);
+  };
+
+  const openVoidRecord = (recordId: string) => {
+    setVoidingRecordId(recordId);
+    setVoidReason("");
+  };
+
+  const handleConfirmVoidRecord = (recordId: string) => {
+    if (!voidReason.trim()) return;
+    onUpdate((s) => ({ ...s, executionRecords: voidExecutionRecord(s.executionRecords, recordId, voidReason.trim()) }));
+    setVoidingRecordId(null);
+    setVoidReason("");
   };
 
   const totalUnmatched = actMatches?.reduce((sum, m) => sum + m.unmatchedRows.length, 0) ?? 0;
@@ -286,6 +306,8 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
               <th>Apstiprināja</th>
               <th>Pozīcijas</th>
               <th>Kopā izpildīts šajā periodā</th>
+              <th>Statuss</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -298,6 +320,26 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
                   <td>{record.approvedBy || "-"}</td>
                   <td>{record.entries.length}</td>
                   <td>{total}</td>
+                  <td>{record.voidedAt ? `Anulēts (${record.voidedReason})` : "Aktīvs"}</td>
+                  <td>
+                    {!record.voidedAt &&
+                      (voidingRecordId === record.id ? (
+                        <div className="execution-void-form">
+                          <label>
+                            Anulēšanas iemesls
+                            <input value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
+                          </label>
+                          <div className="execution-void-form-actions">
+                            <button onClick={() => handleConfirmVoidRecord(record.id)} disabled={!voidReason.trim()}>
+                              Apstiprināt anulēšanu
+                            </button>
+                            <button onClick={() => setVoidingRecordId(null)}>Atcelt</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => openVoidRecord(record.id)}>Anulēt</button>
+                      ))}
+                  </td>
                 </tr>
               );
             })}

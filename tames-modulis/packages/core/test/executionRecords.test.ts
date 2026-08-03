@@ -7,6 +7,7 @@ import {
   computeExecutionRecordValue,
   computeRemainingQuantity,
   createExecutionRecord,
+  voidExecutionRecord,
 } from "../src/executionRecords/executionRecords.js";
 
 function item(overrides: Partial<BoqItem> = {}): BoqItem {
@@ -30,6 +31,8 @@ function record(overrides: Partial<ExecutionRecord> = {}): ExecutionRecord {
     date: "2026-01-31",
     approvedBy: "Inženieris",
     entries: [],
+    voidedAt: null,
+    voidedReason: null,
     createdAt: "2026-01-31T00:00:00.000Z",
     updatedAt: "2026-01-31T00:00:00.000Z",
     ...overrides,
@@ -56,6 +59,19 @@ describe("computeExecutedToDate", () => {
           { id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 20 },
           { id: "e2", sectionId: "sec-1", itemId: "item-2", executedQuantity: 99 },
         ],
+      }),
+    ];
+    expect(computeExecutedToDate(records, "item-1")).toBe(20);
+  });
+
+  it("excludes voided records from the cumulative total", () => {
+    const records = [
+      record({ id: "rec-1", entries: [{ id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 20 }] }),
+      record({
+        id: "rec-2",
+        entries: [{ id: "e2", sectionId: "sec-1", itemId: "item-1", executedQuantity: 15 }],
+        voidedAt: "2026-02-01T00:00:00.000Z",
+        voidedReason: "Nepareizi ievadīts skaitlis",
       }),
     ];
     expect(computeExecutedToDate(records, "item-1")).toBe(20);
@@ -152,5 +168,26 @@ describe("createExecutionRecord", () => {
     expect(created.approvedBy).toBe("J. Bērziņš");
     expect(created.entries).toEqual([]);
     expect(created.id).toBeTruthy();
+    expect(created.voidedAt).toBeNull();
+    expect(created.voidedReason).toBeNull();
+  });
+});
+
+describe("voidExecutionRecord", () => {
+  it("sets voidedAt/voidedReason on the matching record, leaving others untouched", () => {
+    const records = [record({ id: "rec-1" }), record({ id: "rec-2" })];
+    const result = voidExecutionRecord(records, "rec-1", "Nepareizi ievadīts skaitlis");
+    expect(result[0].voidedAt).toBeTruthy();
+    expect(result[0].voidedReason).toBe("Nepareizi ievadīts skaitlis");
+    expect(result[1].voidedAt).toBeNull();
+  });
+
+  it("throws when the record id is not found", () => {
+    expect(() => voidExecutionRecord([record({ id: "rec-1" })], "missing", "iemesls")).toThrow();
+  });
+
+  it("throws when the record is already voided", () => {
+    const records = [record({ id: "rec-1", voidedAt: "2026-02-01T00:00:00.000Z", voidedReason: "jau anulēts" })];
+    expect(() => voidExecutionRecord(records, "rec-1", "vēlreiz")).toThrow();
   });
 });

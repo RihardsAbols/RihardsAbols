@@ -5,6 +5,7 @@ import {
   createVariationOrder,
   deriveCurrentSections,
   diffAgainstBaseline,
+  voidVariationOrder,
 } from "@tames-modulis/core";
 import type { BoqState, VariationOrder, VariationOrderChange } from "@tames-modulis/core";
 import { useState } from "react";
@@ -26,6 +27,7 @@ const STATUS_LABELS: Record<VariationOrder["status"], string> = {
   proposed: "Ierosināts",
   approved: "Apstiprināts",
   rejected: "Noraidīts",
+  voided: "Anulēts",
 };
 
 /** Sadaļas izvēlnes sentinel vērtība "+ Jauna sadaļa" opcijai - nekad nesakrīt ar īstu sadaļas/izmaiņas id (crypto.randomUUID()). */
@@ -95,6 +97,8 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
   const [voForm, setVoForm] = useState<NewVoFormState>(emptyVoForm());
   const [openChangeFormFor, setOpenChangeFormFor] = useState<string | null>(null);
   const [changeForm, setChangeForm] = useState<ChangeFormState>(emptyChangeForm(state.sections[0]?.id ?? NEW_SECTION_VALUE));
+  const [voidingVoId, setVoidingVoId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
 
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = deriveCurrentSections(state.sections, approvedVariationOrders);
@@ -134,6 +138,18 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
         vo.id === voId ? { ...vo, changes: vo.changes.filter((c) => c.id !== changeId), updatedAt: now } : vo,
       ),
     }));
+  };
+
+  const openVoidVo = (voId: string) => {
+    setVoidingVoId(voId);
+    setVoidReason("");
+  };
+
+  const handleConfirmVoidVo = (voId: string) => {
+    if (!voidReason.trim()) return;
+    onUpdate((s) => ({ ...s, variationOrders: voidVariationOrder(s.variationOrders, voId, voidReason.trim()) }));
+    setVoidingVoId(null);
+    setVoidReason("");
   };
 
   const openAddChange = (voId: string) => {
@@ -265,6 +281,9 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
               {vo.date} · Instruēja: {vo.instructedBy || "-"}
             </div>
             {vo.justification && <p className="vo-justification-text">{vo.justification}</p>}
+            {vo.status === "voided" && vo.voidedReason && (
+              <p className="vo-justification-text">Anulēšanas iemesls: {vo.voidedReason}</p>
+            )}
 
             {vo.changes.length > 0 && (
               <table className="vo-changes-table">
@@ -319,6 +338,31 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
                 <button onClick={() => handleSetStatus(vo.id, "rejected")}>Noraidīt</button>
               </div>
             )}
+
+            {vo.status === "approved" &&
+              (voidingVoId === vo.id ? (
+                <div className="vo-void-form">
+                  <p className="hint">
+                    Anulēšana ir korekcijas mehānisms kļūdaini apstiprinātai VO (piem. nepareizs daudzums) - VO paliek
+                    redzama vēsturē, bet vairs neietekmē pašreizējo stāvokli. Uzmanību: ja cita apstiprināta VO
+                    atsaucas uz šīs VO izveidotu sadaļu/pozīciju, pēc anulēšanas tā izmaiņa vairs netiks piemērota.
+                  </p>
+                  <label>
+                    Anulēšanas iemesls
+                    <input value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
+                  </label>
+                  <div className="vo-void-form-actions">
+                    <button onClick={() => handleConfirmVoidVo(vo.id)} disabled={!voidReason.trim()}>
+                      Apstiprināt anulēšanu
+                    </button>
+                    <button onClick={() => setVoidingVoId(null)}>Atcelt</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="vo-actions">
+                  <button onClick={() => openVoidVo(vo.id)}>Anulēt</button>
+                </div>
+              ))}
 
             {openChangeFormFor === vo.id && (
               <div className="vo-change-form">

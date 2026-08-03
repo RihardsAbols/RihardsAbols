@@ -15,6 +15,7 @@ export {
   deriveCurrentState,
   nextVariationOrderNumber,
   createVariationOrder,
+  voidVariationOrder,
   computeVariationOrderDirectTotalImpact,
   diffAgainstBaseline,
 } from "./variationOrders/deriveCurrentState.js";
@@ -26,6 +27,7 @@ export {
   computeExecutionOverview,
   computeExecutionRecordValue,
   createExecutionRecord,
+  voidExecutionRecord,
 } from "./executionRecords/executionRecords.js";
 export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";
 // FileSystemStorageAdapter is intentionally NOT re-exported here: it imports

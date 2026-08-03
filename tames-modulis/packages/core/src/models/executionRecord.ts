@@ -20,8 +20,13 @@ export interface ExecutionRecordEntry {
  * numurēts, jo lietotājs var šeit lietot jebkuru savā praksē pieņemto
  * numerāciju. Ieraksti (`entries`) satur TIKAI pozīcijas ar izpildi šajā
  * periodā - nulles/neskartas pozīcijas netiek glabātas. Reiz saglabāts akts
- * NAV rediģējams/dzēšams šajā versijā (append-only audit trail, tāpat kā
- * apstiprinātas/noraidītas VO nav rediģējamas pēc statusa maiņas).
+ * NAV tieši rediģējams/dzēšams (append-only audit trail, tāpat kā
+ * apstiprinātas/noraidītas VO nav rediģējamas pēc statusa maiņas) - kļūdas
+ * (piem. nepareizi ievadīts skaitlis) labo ar ANULĒŠANU
+ * (`voidedAt`/`voidedReason`, skat. executionRecords/executionRecords.ts
+ * `voidExecutionRecord`) + jauna, pareiza akta izveidi, nevis pārrakstot vai
+ * dzēšot šo pašu ierakstu - tas saglabā pilnu vēsturi (kas un kad anulēja,
+ * un kāpēc), skat. CLAUDE.md "Izpildes aktu/VO anulēšana (Sesija 23)".
  */
 export interface ExecutionRecord {
   id: string;
@@ -31,6 +36,15 @@ export interface ExecutionRecord {
   /** Kurš inženieris/puse apstiprinājusi šo aktu. */
   approvedBy: string;
   entries: ExecutionRecordEntry[];
+  /**
+   * Kad šis akts anulēts (ISO datums), `null` kamēr aktīvs. Anulēts akts
+   * paliek vēsturē (nav dzēsts), bet tā ieraksti tiek IZSLĒGTI no
+   * `computeExecutedToDate`/`computeExecutionOverview` aprēķina - tā, it kā
+   * šis akts nekad nebūtu iesniegts.
+   */
+  voidedAt: string | null;
+  /** Anulēšanas iemesls (brīvs teksts) - `null` kamēr aktīvs. */
+  voidedReason: string | null;
   createdAt: string;
   updatedAt: string;
 }

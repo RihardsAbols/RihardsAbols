@@ -100,10 +100,43 @@ export function createVariationOrder(existing: VariationOrder[], input: CreateVa
     date: input.date,
     status: "proposed",
     statusDate: null,
+    voidedReason: null,
     changes: [],
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * ANULĒ apstiprinātu VO (status "approved" -> "voided") - korekcijas
+ * mehānisms kļūdaini apstiprinātai VO (piem. nepareizs daudzums), skat.
+ * CLAUDE.md "Izpildes aktu/VO anulēšana (Sesija 23)". Anulēta VO paliek
+ * `variationOrders` sarakstā (nav dzēsta, pilns audit trail), bet vairs NAV
+ * "approved", tāpēc `deriveCurrentState`/`deriveCurrentSections` (kas filtrē
+ * pēc `status === "approved"`) to vairs nepiemēro pašreizējam stāvoklim -
+ * korekciju veic, izveidojot JAUNU VO, nevis pārrakstot šo.
+ *
+ * Zināms ierobežojums (apzināti nav bloķēts, tikai jāzina): ja cita
+ * APSTIPRINĀTA VO atsaucas (change.itemId/sectionId) uz pozīciju/sadaļu, ko
+ * izveidoja TIEŠI ŠĪ VO (skat. models/variationOrder.ts "self-referencing
+ * id"), pēc anulēšanas `applyChange` (deriveCurrentSections) to izmaiņu
+ * klusi izlaidīs (sadaļa/pozīcija vairs neeksistēs atvasinātajā stāvoklī) -
+ * tas jau ir esošais "nekonsekventi dati" ceļš, ne jauna kļūda, bet
+ * lietotājam pirms anulēšanas jāpārliecinās, ka neviena vēlāka VO nav
+ * atkarīga no šīs.
+ */
+export function voidVariationOrder(variationOrders: VariationOrder[], voId: string, reason: string): VariationOrder[] {
+  const target = variationOrders.find((vo) => vo.id === voId);
+  if (!target) {
+    throw new Error(`Variation order not found: ${voId}`);
+  }
+  if (target.status !== "approved") {
+    throw new Error(`Only an approved variation order can be voided (current status: ${target.status})`);
+  }
+  const now = new Date().toISOString();
+  return variationOrders.map((vo) =>
+    vo.id === voId ? { ...vo, status: "voided", statusDate: now, voidedReason: reason, updatedAt: now } : vo,
+  );
 }
 
 /**

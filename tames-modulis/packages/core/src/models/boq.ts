@@ -101,9 +101,15 @@ export interface BoqState {
   updatedAt: string;
 }
 
-// v7 pievienoja executionRecords (izpildes aktu vēsture pa periodiem, lieto
-// atlikuma aprēķinam pirms jaunas VO izveides) un VariationOrderChange.newSection
-// (VO var izveidot pavisam jaunu sadaļu, ne tikai pozīcijas esošā). v6 pievienoja baselineApprovedAt (bāzes tāmes iesaldēšanas atzīme) un
+// v8 pievienoja ExecutionRecord.voidedAt/voidedReason un
+// VariationOrder.voidedReason (VariationOrderStatus jauna vērtība "voided") -
+// izpildes aktu/VO ANULĒŠANA kā korekcijas mehānisms kļūdainam ierakstam
+// (skat. CLAUDE.md "Izpildes aktu/VO anulēšana (Sesija 23)"), nevis tiešu
+// rediģēšanu/dzēšanu, lai saglabātu audit trail. v7 pievienoja executionRecords
+// (izpildes aktu vēsture pa periodiem, lieto atlikuma aprēķinam pirms jaunas
+// VO izveides) un VariationOrderChange.newSection (VO var izveidot pavisam
+// jaunu sadaļu, ne tikai pozīcijas esošā). v6 pievienoja baselineApprovedAt
+// (bāzes tāmes iesaldēšanas atzīme) un
 // variationOrders (tāmes izmaiņu/VO saraksts) - skat. models/variationOrder.ts
 // un variationOrders/deriveCurrentState.ts. v5 pievienoja projekta līmeņa
 // contractor/client rekvizītus un preparedBy/checkedBy (Excel eksporta
@@ -113,7 +119,7 @@ export interface BoqState {
 // `unitPrice` with a darba alga/materiāli/mehānismi split and added
 // overheadRate/profitRate, matching the Līguma tāme format used by the
 // izpildes-akts-validacija skill (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;

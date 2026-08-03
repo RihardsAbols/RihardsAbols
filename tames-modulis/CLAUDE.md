@@ -26,13 +26,16 @@ Npm workspace ar divām pakotnēm:
   (Variation Order) vadība" zemāk.
 - `src/variationOrders/deriveCurrentState.ts` — `deriveCurrentSections`/
   `deriveCurrentState` (atvasina bāze + apstiprinātās VO, arī jaunas
-  sadaļas), VO izveide/numerācija, `computeVariationOrderDirectTotalImpact`,
-  `diffAgainstBaseline` — skat. "Tāmes izmaiņu (Variation Order) vadība"
-  zemāk pilnu semantiku.
+  sadaļas), VO izveide/numerācija, `voidVariationOrder` (anulē apstiprinātu
+  VO, skat. "Izpildes aktu/VO anulēšana (Sesija 23)" zemāk),
+  `computeVariationOrderDirectTotalImpact`, `diffAgainstBaseline` — skat.
+  "Tāmes izmaiņu (Variation Order) vadība" zemāk pilnu semantiku.
 - `src/executionRecords/executionRecords.ts` — `computeExecutedToDate`
-  (kumulatīvais izpildītais daudzums no visiem periodiem),
-  `computeRemainingQuantity`, `createExecutionRecord` — skat. "Tāmes
-  izmaiņu (Variation Order) vadība" zemāk.
+  (kumulatīvais izpildītais daudzums no visiem periodiem, izlaižot
+  anulētos aktus), `computeRemainingQuantity`, `createExecutionRecord`,
+  `voidExecutionRecord` (anulē aktu, skat. "Izpildes aktu/VO anulēšana
+  (Sesija 23)" zemāk) — skat. "Tāmes izmaiņu (Variation Order) vadība"
+  zemāk.
 - `src/storage/StorageAdapter.ts` — glabāšanas saskarne
   (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
   (fails <-> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
@@ -49,8 +52,8 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7`, `migrateToCurrent` atbalsta
-  pakāpenisku migrāciju pievienošanu arī turpmāk.
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8`, `migrateToCurrent`
+  atbalsta pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
   (`calculateSectionDirectTotal`), un pilns kopsavilkums ar atlaidi,
@@ -203,16 +206,21 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   brīvs teksts, neatkarīgs no sadaļas nosaukuma UN no Excel eksporta lapas
   nosaukuma. Skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
 - **Tāmes izmaiņas (Variation Order) ir numurētas entītijas ar formālu
-  statusa plūsmu** (ierosināts/apstiprināts/noraidīts), NEVIS tikai
-  rediģējami "pašreizējie" daudzumi — un "pašreizējais" stāvoklis vienmēr
-  ATVASINĀTS no iesaldētas bāzes + apstiprinātajām VO, bāze pēc iesaldēšanas
-  nekad netiek mutēta. VO var izveidot arī pavisam JAUNU sadaļu (ne tikai
-  pozīciju esošā). Skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  statusa plūsmu** (ierosināts/apstiprināts/noraidīts/**anulēts**), NEVIS
+  tikai rediģējami "pašreizējie" daudzumi — un "pašreizējais" stāvoklis
+  vienmēr ATVASINĀTS no iesaldētas bāzes + apstiprinātajām (un NEanulētajām)
+  VO, bāze pēc iesaldēšanas nekad netiek mutēta. VO var izveidot arī
+  pavisam JAUNU sadaļu (ne tikai pozīciju esošā). Kļūdaini apstiprinātu VO
+  koriģē ar ANULĒŠANU + jaunu VO, nevis tiešu rediģēšanu (skat. "Izpildes
+  aktu/VO anulēšana (Sesija 23)" zemāk). Skat. "Tāmes izmaiņu (Variation
+  Order) vadība" zemāk.
 - **Izpildes akti veido atsevišķu, papildinošu vēsturi pa atskaites
   periodiem** (`BoqState.executionRecords`), nevis vienu rediģējamu
   "izpildīts kopā" skaitli pozīcijā — kumulatīvais izpildītais un atlikums
-  vienmēr ATVASINĀTS no šīs vēstures. Skat. "Tāmes izmaiņu (Variation
-  Order) vadība" zemāk.
+  vienmēr ATVASINĀTS no šīs vēstures (izlaižot ANULĒTOS aktus). Kļūdainu
+  aktu koriģē ar ANULĒŠANU + jaunu aktu, nevis tiešu rediģēšanu/dzēšanu
+  (skat. "Izpildes aktu/VO anulēšana (Sesija 23)" zemāk). Skat. "Tāmes
+  izmaiņu (Variation Order) vadība" zemāk.
 - **Aprēķini noapaļo tikai vienreiz, beigās** (`summarizeBoq`) — sadaļu un
   kopējās summas tiek saskaitītas no nenoapaļotiem starprezultātiem, lai
   daudzu sīku pozīciju gadījumā noapaļošanas kļūda nesakrātos.
@@ -1001,6 +1009,122 @@ compatibility. Konsolē nav kļūdu.
 - ✅ Manuāli pārbaudīts ar Playwright, ieskaitot vizuālu apstiprinājumu
   (ekrānuzņēmums) pārsniegtā apjoma iezīmējumam un backward compatibility
   projektam bez izpildes aktiem.
+
+### Izpildes aktu/VO anulēšana (Sesija 23)
+
+Līdz Sesijai 22 (ieskaitot) izpildes akti un apstiprinātas/noraidītas VO
+bija pilnīgi append-only — reiz saglabāts akts vai apstiprināta VO nebija
+NEKĀDĀ VEIDĀ koriģējama, ja tajā bija ievadīta kļūda (piem. nepareizi
+uzrakstīts skaitlis). Lietotājs apstiprināja (skat. PROGRESS.md Sesijas 23
+jautājumu/atbilžu sarakstu), ka šī ir reāla vajadzība, un izvēlējās
+**anulēšanu (voiding) + jauna, pareiza ieraksta izveidi**, nevis tiešu
+rediģēšanu/dzēšanu — tas saglabā pilnu audit trail (nekas netiek
+pārrakstīts vai fiziski dzēsts), maksājot vienu papildu soli (anulēt +
+ievadīt no jauna) korekcijas ērtuma vietā. Apjoms: **gan izpildes akti, gan
+apstiprinātas VO** (nevis tikai izpildes akti).
+
+**Datu modelis (`schemaVersion` `7 -> 8`):**
+- `ExecutionRecord.voidedAt: string | null` / `voidedReason: string | null`
+  (`models/executionRecord.ts`) — `null` kamēr akts aktīvs.
+- `VariationOrderStatus` papildināts ar `"voided"` (`models/
+  variationOrder.ts`), `VariationOrder.voidedReason: string | null`. Statusa
+  maiņas datumu (kad anulēts) glabā TAS PATS jau esošais `statusDate` lauks
+  (nav vajadzīgs jauns timestamp lauks — konsekventi ar to, ka `statusDate`
+  jau apraksta "kad statuss pēdējoreiz mainīts").
+
+**Anulēšana ir statusa/karoga maiņa, NEVIS dzēšana** — akts/VO paliek
+attiecīgi `executionRecords`/`variationOrders` sarakstā (redzams vēsturē
+UI un Excel eksportā), bet tiek IZSLĒGTS no aprēķina:
+- `executionRecords/executionRecords.ts` `computeExecutedToDate` izlaiž
+  ierakstus, kam `record.voidedAt !== null` — šis ir VIENĪGAIS punkts, kur
+  jāfiltrē (`computeExecutionOverview`/UI `ItemsTable`/Excel eksports visi
+  izsauc šo funkciju, tāpēc anulēšana automātiski propagējas visur, bez
+  atsevišķas filtrēšanas katrā izsaukuma vietā).
+- `variationOrders/deriveCurrentState.ts` `deriveCurrentState`/UI/Excel
+  eksports jau filtrē VO pēc `status === "approved"` (esošs kods no
+  Sesijas 18) — kad VO statuss mainās uz `"voided"`, tā AUTOMĀTISKI vairs
+  neietilpst šajā filtrā, nekas papildu nav jāmaina atvasināšanas loģikā.
+
+**Jaunās core funkcijas** (abas testētas, throw uz nederīgu ievadi):
+- `executionRecords/executionRecords.ts` `voidExecutionRecord(records,
+  recordId, reason)` — met kļūdu, ja `recordId` nav atrasts VAI akts jau
+  anulēts (nevar anulēt divreiz).
+- `variationOrders/deriveCurrentState.ts` `voidVariationOrder(orders, voId,
+  reason)` — met kļūdu, ja `voId` nav atrasts VAI VO statuss NAV `"approved"`
+  (apzināti NEATĻAUTS anulēt `proposed` VO — tā jau ir brīvi rediģējama/
+  dzēšama pa izmaiņām, skat. `handleRemoveChange` `VariationOrders.tsx`, un
+  NAV atļauts anulēt `rejected`/jau `voided` VO — noraidīta VO jau
+  neietekmē neko, anulēšana tai nedotu jēgu).
+
+**Zināms ierobežojums (apzināti nav bloķēts, dokumentēts kā ir):** ja cita
+APSTIPRINĀTA VO atsaucas (`change.itemId`/`sectionId`) uz pozīciju/sadaļu,
+ko izveidoja TIEŠI ANULĒJAMĀ VO (self-referencing id, skat. "Tāmes izmaiņu
+(Variation Order) vadība" augšā), pēc anulēšanas `applyChange`
+(`deriveCurrentSections`) šo vēlāko izmaiņu klusi izlaidīs (sadaļa/pozīcija
+vairs neeksistēs atvasinātajā stāvoklī) — tas jau ir esošais "nekonsekventi
+dati" ceļš (Sesija 18), nevis jauna kļūda šai funkcijai, bet UI parāda par
+to brīdinājuma tekstu anulēšanas formā, lai lietotājs par to zinātu PIRMS
+apstiprināšanas (konsekventi ar "brīdinājums, nevis bloķēšana" principu,
+skat. "Izpildes aktu uzskaite un atlikuma aprēķins" augšā).
+
+**UI** (`VariationOrders.tsx`/`ExecutionRecords.tsx`): abas ir vienāda
+"atveras inline forma ar obligātu iemesla lauku" plūsma, konsekventi ar jau
+esošajām VO izmaiņu/jauna akta formām (nevis `window.prompt()` — projektā
+līdz šim nav lietots, tikai `confirm()` destruktīvām darbībām un state
+vadītas formas tekstam):
+- `VariationOrders.tsx` — apstiprinātai VO kartei parādās "Anulēt" poga
+  (blakus vietai, kur `proposed` VO rāda Apstiprināt/Noraidīt); klikšķis
+  atver `.vo-void-form` (iemesla teksta lauks + brīdinājuma teksts par
+  atsauču ierobežojumu + Apstiprināt/Atcelt), "Apstiprināt anulēšanu"
+  atspējota, kamēr iemesls tukšs. VO karte pēc anulēšanas rāda "Anulēts"
+  statusa nozīmi (`vo-status-voided`, pelēks, jauns `STATUS_LABELS`
+  ieraksts) un "Anulēšanas iemesls: ..." rindu (tāpat kā `justification`).
+- `ExecutionRecords.tsx` — aktu vēstures tabulai jauna "Statuss" kolonna
+  ("Aktīvs"/"Anulēts (iemesls)") un pēdējā kolonna ar "Anulēt" pogu (TIKAI
+  aktīviem aktiem) -> `.execution-void-form` (tas pats izkārtojums kā VO).
+
+**Excel eksportā** (`excel/export.ts`) minimālas, apzināti ierobežotas
+izmaiņas — anulēšanas IEMESLS Excel failā NAV atsevišķas kolonnas (paliek
+UI-only, konsekventi ar jau dokumentēto "Excel imports/eksports ir daļēji
+zaudējošs" lēmumu), tikai STATUSS ir redzams:
+- `VO_STATUS_LABELS` papildināts ar `voided: "Anulēts"` — jau esošā
+  "IZMAIŅAS" lapas "Statuss" kolonna (Sesija 18) to rāda automātiski, nav
+  vajadzīga papildu kolonna vai izkārtojuma izmaiņa.
+- "IZPILDES AKTI" lapas akta reģistram (Sesija 20) pievienota JAUNA
+  "Statuss" kolonna (6. kolonna, kas iepriekš piederēja TIKAI pārskata
+  tabulai zemāk tajā pašā lapā — tas pats "koplietotas kolonnas, dažādas
+  nozīmes pa tabulām" paņēmiens, kas jau dokumentēts
+  `EXECUTION_RECORDS_SHEET_COLUMN_WIDTHS` komentārā) — "Aktīvs"/"Anulēts".
+
+**Migrācija (`v7 -> v8`):** trūkstošam `voidedAt`/`voidedReason`
+(izpildes akti) vai `voidedReason` (VO) uzstāda `null` — esošs projekts bez
+šīs funkcijas lietošanas paliek pilnībā nemainīgs (visi akti/VO
+"neanulēti").
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi persistences pārbaudei):** izveidots projekts ar
+vienu sadaļu/pozīciju (daudzums 10), bāze iesaldēta; VO ar daudzuma
+korekciju +5 izveidota un apstiprināta — "Tāme" cilnē daudzums 15;
+VO anulēta ar iemeslu — daudzums atgriezās uz 10, statusa žetons "Anulēts",
+iemesls redzams kartē; izpildes akts ar izpildītu daudzumu 4 — "Tāme" cilnē
+Izpildīts=4/Atlikums=6; akts anulēts ar iemeslu — Izpildīts=0/Atlikums=10
+(pareizi izslēgts no aprēķina), vēstures tabulā "Anulēts (iemesls)";
+PĒC LAPAS PĀRLĀDES abi anulēšanas stāvokļi (VO statusa žetons, akta
+statusa kolonna) saglabājās pareizi (IndexedDB round-trip caur jauno v8
+shēmu). Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 108/108 testi zaļi (98 + 10 jauni: `voidExecutionRecord`/
+  `voidVariationOrder` unit testi, `computeExecutedToDate` anulēta akta
+  izslēgšana, migrācijas testi v7->v8 defaultiem UN jau-klātesošu vērtību
+  saglabāšanai).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright pilna plūsma (VO anulēšana, izpildes
+  akta anulēšana, atkārtoto aprēķinu pareizība, persistence pēc lapas
+  pārlādes), ieskaitot to, ka Playwright atkal tika instalēts tikai
+  pagaidu pārbaudei (`npm install --no-save playwright-core`, git status
+  tīrs pēc noņemšanas) un pēc tam noņemts, tāpat kā Sesijās 20-22.
 
 ### Favicon
 

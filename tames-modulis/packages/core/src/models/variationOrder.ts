@@ -1,6 +1,13 @@
 import type { BoqItem } from "./boq.js";
 
-export type VariationOrderStatus = "proposed" | "approved" | "rejected";
+/**
+ * "voided" - VO bija `approved` (ietekmēja pašreizējo stāvokli), bet vēlāk
+ * ANULĒTA kļūdas dēļ (piem. nepareizi ievadīts daudzums) - skat.
+ * variationOrders/deriveCurrentState.ts `voidVariationOrder`. Anulēta VO
+ * paliek redzama vēsturē, bet vairs NEIETEKMĒ atvasināto stāvokli (tā vairs
+ * nav "approved"), tāpēc korekcijai izmanto jaunu VO, nevis pārraksta šo.
+ */
+export type VariationOrderStatus = "proposed" | "approved" | "rejected" | "voided";
 
 /**
  * Vienas pozīcijas izmaiņa VO ietvaros. Attiecas VAI NU uz jau esošu bāzes
@@ -62,8 +69,10 @@ export interface VariationOrder {
   /** Ierosinājuma/instrukcijas datums (ISO). */
   date: string;
   status: VariationOrderStatus;
-  /** Kad statuss pēdējoreiz mainīts uz approved/rejected - null, kamēr proposed. */
+  /** Kad statuss pēdējoreiz mainīts uz approved/rejected/voided - null, kamēr proposed. */
   statusDate: string | null;
+  /** Anulēšanas iemesls (brīvs teksts), ja status === "voided" - citādi null. */
+  voidedReason: string | null;
   changes: VariationOrderChange[];
   createdAt: string;
   updatedAt: string;

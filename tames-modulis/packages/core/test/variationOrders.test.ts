@@ -8,6 +8,7 @@ import {
   deriveCurrentState,
   diffAgainstBaseline,
   nextVariationOrderNumber,
+  voidVariationOrder,
 } from "../src/variationOrders/deriveCurrentState.js";
 import { createEmptyBoqState } from "../src/models/boq.js";
 
@@ -52,6 +53,7 @@ function vo(overrides: Partial<VariationOrder> = {}): VariationOrder {
     date: "2026-01-01",
     status: "approved",
     statusDate: "2026-01-02",
+    voidedReason: null,
     changes: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -215,8 +217,43 @@ describe("nextVariationOrderNumber / createVariationOrder", () => {
     expect(created.number).toBe("VO-1");
     expect(created.status).toBe("proposed");
     expect(created.statusDate).toBeNull();
+    expect(created.voidedReason).toBeNull();
     expect(created.changes).toEqual([]);
     expect(created.id).toBeTruthy();
+  });
+});
+
+describe("voidVariationOrder", () => {
+  it("moves an approved VO to status 'voided' with the given reason", () => {
+    const orders = [vo({ id: "vo-1", status: "approved" })];
+    const result = voidVariationOrder(orders, "vo-1", "Nepareizs daudzums");
+    expect(result[0].status).toBe("voided");
+    expect(result[0].voidedReason).toBe("Nepareizs daudzums");
+    expect(result[0].statusDate).toBeTruthy();
+  });
+
+  it("excludes the voided VO from deriveCurrentState (no longer counted as approved)", () => {
+    const state = createEmptyBoqState("proj-1", "Projekts");
+    state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+    state.sections = [section([item({ quantity: 10 })])];
+    state.variationOrders = [vo({ id: "vo-1", status: "approved", changes: [change({ id: "c1", quantityDelta: 5 })] })];
+
+    const before = deriveCurrentState(state);
+    expect(before.sections[0].items[0].quantity).toBe(15);
+
+    state.variationOrders = voidVariationOrder(state.variationOrders, "vo-1", "Kļūda");
+    const after = deriveCurrentState(state);
+    expect(after.sections[0].items[0].quantity).toBe(10);
+  });
+
+  it("throws when the VO id is not found", () => {
+    expect(() => voidVariationOrder([vo({ id: "vo-1" })], "missing", "iemesls")).toThrow();
+  });
+
+  it("throws when the VO is not currently approved (proposed/rejected/already voided)", () => {
+    expect(() => voidVariationOrder([vo({ id: "vo-1", status: "proposed" })], "vo-1", "iemesls")).toThrow();
+    expect(() => voidVariationOrder([vo({ id: "vo-1", status: "rejected" })], "vo-1", "iemesls")).toThrow();
+    expect(() => voidVariationOrder([vo({ id: "vo-1", status: "voided" })], "vo-1", "iemesls")).toThrow();
   });
 });
 

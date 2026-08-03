@@ -1345,18 +1345,86 @@ compatible). Konsolē nav kļūdu.
   noņemts (tāpat kā Sesijā 21) — projekts Playwright kā pastāvīgu atkarību
   neiegūst.
 
+## Sesija 23: Izpildes aktu/VO anulēšana (korekcijas mehānisms) — ✅ pabeigts
+
+**Uzdevums:** vienīgais atlikušais kandidāts no Sesijas 22 saraksta —
+izpildes akti/VO pēc saglabāšanas nebija NEKĀDĀ VEIDĀ koriģējami (apzināta
+audit-trail izvēle kopš Sesijas 18/19). Pirms ieviešanas PAJAUTĀTS
+lietotājam (kā prasīts iepriekšējās sesijas ieteikumā) — apstiprināja
+strādāt pie šī kandidāta.
+
+**Lēmumi (apstiprināti ar lietotāju, jautāti tieši pirms ieviešanas):**
+- **Apjoms:** gan izpildes akti, GAN jau apstiprinātas VO (ne tikai
+  izpildes akti, kā bija PROGRESS.md piemērā) — tas pats korekcijas
+  mehānisms abiem.
+- **Mehānisms: anulēšana (voiding) + jauna, pareiza ieraksta izveide**,
+  NEVIS tieša rediģēšana ar izmaiņu vēsturi UN NEVIS pilna
+  rediģēšana/dzēšana bez pēdām (abas alternatīvas tika piedāvātas un
+  noraidītas) — vecais akts/VO paliek redzams vēsturē ar anulēšanas
+  atzīmi + iemeslu, izslēgts no aprēķina, lietotājs izveido jaunu, pareizu
+  ierakstu. Pilns audit trail saglabājas (nekas fiziski dzēsts vai klusi
+  pārrakstīts).
+
+**Implementēts:** skat. CLAUDE.md "Izpildes aktu/VO anulēšana (Sesija 23)"
+pilnu tehnisko aprakstu — `schemaVersion` `7 -> 8`
+(`ExecutionRecord.voidedAt`/`voidedReason`, jauns `VariationOrderStatus`
+"voided" + `VariationOrder.voidedReason`), jaunas core funkcijas
+`voidExecutionRecord`/`voidVariationOrder` (abas met kļūdu uz nederīgu
+ievadi — nav atrasts ieraksts, jau anulēts akts, vai VO statuss nav
+"approved"), `computeExecutedToDate` izlaiž anulētos aktus (vienīgais
+filtrēšanas punkts — propagējas automātiski uz `computeExecutionOverview`/
+UI/Excel), VO filtrs pēc `status === "approved"` (jau esošs kopš
+Sesijas 18) automātiski izslēdz anulētās VO bez papildu izmaiņām
+atvasināšanas loģikā. UI (`VariationOrders.tsx`/`ExecutionRecords.tsx`)
+abās vietās "Anulēt" poga + inline forma ar obligātu iemesla lauku
+(konsekventi ar esošajām VO izmaiņu/akta formām, nevis `window.prompt()`).
+Excel eksportā VO statuss "Anulēts" parādās jau esošajā "Statuss" kolonnā
+(Sesija 18) bez izmaiņām; "IZPILDES AKTI" akta reģistram (Sesija 20)
+pievienota jauna "Statuss" kolonna. Anulēšanas IEMESLS Excel failā apzināti
+NAV atsevišķas kolonnas (paliek UI-only) — konsekventi ar jau dokumentēto
+"Excel eksports ir daļēji zaudējošs" lēmumu.
+
+**Zināms ierobežojums (dokumentēts, nav bloķēts):** ja cita apstiprināta VO
+atsaucas uz pozīciju/sadaļu, ko izveidoja tieši anulējamā VO
+(self-referencing id), pēc anulēšanas tā vēlākā izmaiņa klusi tiks
+izlaista (jau esošais "nekonsekventi dati" ceļš no Sesijas 18, ne jauna
+kļūda) — UI parāda brīdinājuma tekstu anulēšanas formā PIRMS
+apstiprināšanas, konsekventi ar projekta "brīdinājums, nevis bloķēšana"
+principu (skat. Sesija 19 pārsniegtā apjoma brīdinājumu).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi persistences pārbaudei):** projekts ar sadaļu/
+pozīciju (daudzums 10), bāze iesaldēta; VO ar daudzuma korekciju +5
+apstiprināta (daudzums 15 "Tāme" cilnē); VO anulēta ar iemeslu — daudzums
+atgriezās uz 10, statusa žetons "Anulēts", iemesls redzams; izpildes akts
+ar izpildītu daudzumu 4 (Izpildīts=4/Atlikums=6); akts anulēts ar iemeslu —
+Izpildīts=0/Atlikums=10 (pareizi izslēgts), vēstures tabulā "Anulēts
+(iemesls)"; PĒC LAPAS PĀRLĀDES abi anulēšanas stāvokļi saglabājās pareizi
+(IndexedDB round-trip caur jauno v8 shēmu). Konsolē nav kļūdu. Playwright
+atkal instalēts tikai pagaidu pārbaudei (`npm install --no-save
+playwright-core`, git status tīrs pēc noņemšanas) un pēc tam noņemts,
+tāpat kā Sesijās 20-22.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 108/108 testi zaļi (98 + 10 jauni: `voidExecutionRecord`/
+  `voidVariationOrder` unit testi, `computeExecutedToDate` anulēta akta
+  izslēgšana, migrācijas testi v7->v8 defaultiem UN jau-klātesošu vērtību
+  saglabāšanai; divi jau esoši v5/v6 migrācijas testi papildināti ar
+  jaunajiem laukiem, ko tagad pieskaita pilnā migrāciju ķēdē).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi — jaunais kods tikai render loģikā/dažas jaunas
+  core funkcijas, nav jaunas atkarības).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna VO anulēšanas UN izpildes
+  akta anulēšanas plūsma, atkārtoto aprēķinu pareizība, statusa/iemesla
+  persistence pēc lapas pārlādes, konsolē nav kļūdu.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Sesijas 20-22 apstiprinātie uzdevumi ir pabeigti. Atlikušais kandidāts no
-iepriekšējā saraksta (NAV apstiprināts uzdevums, jājautā lietotājam
-nākamās sesijas sākumā):
-
-1. **Izpildes akti/VO nav rediģējami/dzēšami pēc saglabāšanas** (apzināta
-   audit-trail izvēle) — vai reālā lietošanā radīsies vajadzība labot kļūdu
-   akta ievadē (piem. nepareizi ievadīts skaitlis) bez jauna korekcijas
-   akta veidošanas?
+Sesijas 20-23 apstiprinātie uzdevumi ir pabeigti. Šobrīd NAV zināma
+neapstiprināta kandidāta — iepriekšējā saraksta vienīgais ieraksts
+(izpildes aktu/VO korekcijas iespēja) tika atrisināts šajā sesijā.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-22) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai strādāt
-pie augstāk minētā vienīgā atlikušā kandidāta, vai lietotājam ir cits
-uzdevums — nevis pieņemt, ka tas ir automātiski nākamais uzdevums.
+Sesijas 18-23) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
+konkrēts nākamais uzdevums — nav gatava kandidātu saraksta, ko piedāvāt
+bez papildu konteksta no lietotāja.

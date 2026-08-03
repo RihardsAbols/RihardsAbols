@@ -233,7 +233,7 @@ describe("migrateToCurrent", () => {
     const migrated = migrateToCurrent(v5);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(migrated.baselineApprovedAt).toBe("2025-12-01T00:00:00.000Z");
-    expect(migrated.variationOrders).toEqual([vo]);
+    expect(migrated.variationOrders).toEqual([{ ...vo, voidedReason: null }]);
   });
 
   it("defaults executionRecords and backfills newSection: null on existing VO changes when migrating v6 data", () => {
@@ -328,8 +328,108 @@ describe("migrateToCurrent", () => {
     };
     const migrated = migrateToCurrent(v6);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-    expect(migrated.executionRecords).toEqual([executionRecord]);
+    expect(migrated.executionRecords).toEqual([{ ...executionRecord, voidedAt: null, voidedReason: null }]);
     expect(migrated.variationOrders[0].changes[0].newSection).toEqual({ name: "Papildu darbi", estimateNumber: "2-1" });
+  });
+
+  it("defaults voidedAt/voidedReason on execution records and voidedReason on VO when migrating v7 data", () => {
+    const v7 = {
+      schemaVersion: 7,
+      projectId: "proj-15",
+      projectName: "v7 bez anulēšanas laukiem",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          changes: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [
+        {
+          id: "rec-1",
+          period: "2026-01",
+          date: "2026-01-31",
+          approvedBy: "Inženieris",
+          entries: [],
+          createdAt: "2026-01-31T00:00:00.000Z",
+          updatedAt: "2026-01-31T00:00:00.000Z",
+        },
+      ],
+    };
+    const migrated = migrateToCurrent(v7);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.executionRecords[0]).toMatchObject({ voidedAt: null, voidedReason: null });
+    expect(migrated.variationOrders[0]).toMatchObject({ voidedReason: null });
+  });
+
+  it("preserves already-present voidedAt/voidedReason during v7->v8 migration", () => {
+    const v7 = {
+      schemaVersion: 7,
+      projectId: "proj-16",
+      projectName: "v7 ar jau anulētu aktu/VO",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "voided",
+          statusDate: "2026-02-01",
+          voidedReason: "Nepareizs daudzums",
+          changes: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [
+        {
+          id: "rec-1",
+          period: "2026-01",
+          date: "2026-01-31",
+          approvedBy: "Inženieris",
+          entries: [],
+          voidedAt: "2026-02-01T00:00:00.000Z",
+          voidedReason: "Kļūdains skaitlis",
+          createdAt: "2026-01-31T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+      ],
+    };
+    const migrated = migrateToCurrent(v7);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.executionRecords[0].voidedAt).toBe("2026-02-01T00:00:00.000Z");
+    expect(migrated.executionRecords[0].voidedReason).toBe("Kļūdains skaitlis");
+    expect(migrated.variationOrders[0].voidedReason).toBe("Nepareizs daudzums");
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {

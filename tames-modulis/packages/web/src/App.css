@@ -404,6 +404,10 @@ body {
   background: #b00;
 }
 
+.vo-status-badge.vo-status-voided {
+  background: #777;
+}
+
 .vo-card-meta {
   font-size: 0.85rem;
   color: #777;
@@ -475,6 +479,32 @@ body {
 .vo-change-new-section {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.vo-void-form,
+.execution-void-form {
+  background: #fff4f4;
+  border: 1px solid #f0c0c0;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vo-void-form label,
+.execution-void-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.vo-void-form-actions,
+.execution-void-form-actions {
+  display: flex;
   gap: 0.5rem;
 }
 

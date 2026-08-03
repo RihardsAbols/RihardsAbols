@@ -69,6 +69,18 @@ const migrations: Record<number, Migration> = {
       ? data.variationOrders.map((vo) => migrateVariationOrderV6ToV7(vo as Record<string, unknown>))
       : data.variationOrders,
   }),
+  // v7 executionRecords had no voidedAt/voidedReason (anulēšanas mehānisms,
+  // skat. models/executionRecord.ts) and v7 VO had no voidedReason -
+  // default both to "not voided" so existing acts/VO keep working unchanged.
+  7: (data) => ({
+    ...data,
+    executionRecords: Array.isArray(data.executionRecords)
+      ? data.executionRecords.map((record) => migrateExecutionRecordV7ToV8(record as Record<string, unknown>))
+      : data.executionRecords,
+    variationOrders: Array.isArray(data.variationOrders)
+      ? data.variationOrders.map((vo) => migrateVariationOrderV7ToV8(vo as Record<string, unknown>))
+      : data.variationOrders,
+  }),
 };
 
 function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string, unknown> {
@@ -80,6 +92,21 @@ function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string
           return { ...c, newSection: c.newSection ?? null };
         })
       : vo.changes,
+  };
+}
+
+function migrateExecutionRecordV7ToV8(record: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...record,
+    voidedAt: typeof record.voidedAt === "string" ? record.voidedAt : null,
+    voidedReason: typeof record.voidedReason === "string" ? record.voidedReason : null,
+  };
+}
+
+function migrateVariationOrderV7ToV8(vo: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...vo,
+    voidedReason: typeof vo.voidedReason === "string" ? vo.voidedReason : null,
   };
 }
 

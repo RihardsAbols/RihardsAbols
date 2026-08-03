@@ -396,6 +396,7 @@ const VO_STATUS_LABELS: Record<VariationOrder["status"], string> = {
   proposed: "Ierosināts",
   approved: "Apstiprināts",
   rejected: "Noraidīts",
+  voided: "Anulēts",
 };
 
 // Two logical tables (VO reģistrs, mainīto pozīciju saraksts) are stacked in
@@ -561,7 +562,7 @@ function writeExecutionRecordsSheet(workbook: ExcelJS.Workbook, state: BoqState,
   row += 2;
 
   const registerHeaderRow = row;
-  const registerHeaders = ["Periods", "Datums", "Apstiprināja", "Pozīciju skaits", "Akta vērtība (EUR)"];
+  const registerHeaders = ["Periods", "Datums", "Apstiprināja", "Pozīciju skaits", "Akta vērtība (EUR)", "Statuss"];
   registerHeaders.forEach((label, i) => {
     const cell = sheet.getCell(registerHeaderRow, i + 1);
     cell.value = label;
@@ -581,6 +582,10 @@ function writeExecutionRecordsSheet(workbook: ExcelJS.Workbook, state: BoqState,
     const valueCell = sheet.getCell(r, 5);
     valueCell.value = computeExecutionRecordValue(record, currentItemsById);
     valueCell.numFmt = MONEY_FORMAT;
+    // Anulēts akts paliek reģistrā (audit trail), bet nav ieskaitīts pārskata
+    // tabulā zemāk (skat. computeExecutedToDate) - "Statuss" kolonna to padara
+    // redzamu arī šeit, nevis tikai UI, skat. models/executionRecord.ts.
+    sheet.getCell(r, 6).value = record.voidedAt ? "Anulēts" : "Aktīvs";
   });
   row = firstRecordRow + state.executionRecords.length + 1; // + viena tukša atdalītājrinda
 

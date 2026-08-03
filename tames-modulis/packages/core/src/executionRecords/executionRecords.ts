@@ -11,10 +11,13 @@ function itemUnitCost(item: BoqItem): number {
  * Kumulatīvais izpildītais daudzums pozīcijai VISOS izpildes aktos
  * (visos periodos kopā) - vienmēr atvasināts no akta ierakstiem, nekad
  * glabāts atsevišķi (skat. models/boq.ts BoqState.executionRecords).
+ * ANULĒTI akti (`record.voidedAt !== null`, skat. voidExecutionRecord)
+ * netiek ieskaitīti - tā, it kā tie nekad nebūtu iesniegti.
  */
 export function computeExecutedToDate(executionRecords: ExecutionRecord[], itemId: string): number {
   let total = 0;
   for (const record of executionRecords) {
+    if (record.voidedAt) continue;
     for (const entry of record.entries) {
       if (entry.itemId === itemId) {
         total += entry.executedQuantity;
@@ -50,9 +53,32 @@ export function createExecutionRecord(input: CreateExecutionRecordInput): Execut
     date: input.date,
     approvedBy: input.approvedBy,
     entries: [],
+    voidedAt: null,
+    voidedReason: null,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * ANULĒ izpildes aktu (`voidedAt`/`voidedReason` iestatīti) - korekcijas
+ * mehānisms kļūdainam aktam (piem. nepareizi ievadīts skaitlis), skat.
+ * CLAUDE.md "Izpildes aktu/VO anulēšana (Sesija 23)". Akts paliek
+ * `executionRecords` sarakstā (nav dzēsts, pilns audit trail), bet
+ * `computeExecutedToDate` to vairs neieskaita - korekciju veic, izveidojot
+ * JAUNU aktu (manuāli vai Excel importu) ar pareizo daudzumu, nevis
+ * pārrakstot šo.
+ */
+export function voidExecutionRecord(executionRecords: ExecutionRecord[], recordId: string, reason: string): ExecutionRecord[] {
+  const target = executionRecords.find((r) => r.id === recordId);
+  if (!target) {
+    throw new Error(`Execution record not found: ${recordId}`);
+  }
+  if (target.voidedAt) {
+    throw new Error(`Execution record already voided: ${recordId}`);
+  }
+  const now = new Date().toISOString();
+  return executionRecords.map((r) => (r.id === recordId ? { ...r, voidedAt: now, voidedReason: reason, updatedAt: now } : r));
 }
 
 /**
