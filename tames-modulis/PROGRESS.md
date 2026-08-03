@@ -1175,3 +1175,38 @@ DOM renderē tikai ~31 rindu (nevis 300), ritinot mainās redzamās rindas
 saglabātais akts vēsturē satur pareizo kopējo summu (30). Core testi
 (82/82), typecheck un `vite build` (abi tīri) palaisti pēc šī papildinājuma
 bez izmaiņām nepieciešamības.
+
+## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
+
+Šis NAV lietotāja tieši pieprasīts nākamais uzdevums (atšķirībā no Sesijas
+18 beigu ieraksta) — tie ir atvērti pavedieni/ierobežojumi, kas radās
+Sesijās 18-19, kurus vērts PAJAUTĀT lietotājam nākamās sesijas sākumā, PIRMS
+izvēlēties, pie kā strādāt tālāk:
+
+1. **Izpildes akti Excel eksportā** — pašlaik `state.executionRecords` NAV
+   atspoguļoti eksportētajā `.xlsx` failā vispār (nedz reģistrs, nedz
+   ietekme uz "Bāzes daudzums"/"Delta" kolonnām sadaļu lapās, kas šobrīd
+   rāda TIKAI bāzi/VO, ne izpildi). Vai vajag atsevišķu darblapu (piem.
+   "Izpildes akti") līdzīgi "IZMAIŅAS" lapai?
+2. **Izpildes aktu Excel imports** — Sesijā 19 apzināti atlikts (manuāla
+   ievade izvēlēta pirmajai versijai). Vai reāla lietošana rāda, ka manuāla
+   ievade lielam projektam (tūkstošiem pozīciju katru mēnesi) ir par lēnu,
+   un imports no reāla izpildes akta faila (līdzīgi
+   `izpildes-akts-validacija` skill loģikai) kļūst vajadzīgs?
+3. **Izpildes akti/VO nav rediģējami/dzēšami pēc saglabāšanas** (apzināta
+   audit-trail izvēle) — vai reālā lietošanā radīsies vajadzība labot kļūdu
+   akta ievadē (piem. nepareizi ievadīts skaitlis) bez jauna korekcijas
+   akta veidošanas?
+4. **"Pieejamais atlikums" redzams TIKAI VO izveides formā** — vai vajag arī
+   pastāvīgu "atlikums" kolonnu/skatu galvenajā "Tāme" cilnē (vai atsevišķā
+   pārskata skatā), lai redzētu visu pozīciju atlikumus vienlaicīgi, nevis
+   tikai vienu pozīciju uzreiz VO formā?
+5. **Reāla VELVE faila pilna plūsma** — Sesijas 18/19 funkcionalitāte
+   pārbaudīta tikai ar sintētiskiem/maziem testa projektiem (Playwright).
+   Vēl nav pārbaudīts pilns VO + izpildes aktu cikls ar reālu 53-lapu/12876
+   pozīciju failu (tas pats fails, kas izmantots Sesijās 12/13/17).
+
+**Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
+Sesijas 18/19) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, pie kura no
+augstāk minētajiem punktiem (ja kāda vispār) strādāt tālāk — nevis pieņemt,
+ka viens no tiem ir automātiski nākamais uzdevums.
