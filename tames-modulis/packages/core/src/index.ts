@@ -19,10 +19,12 @@ export {
   diffAgainstBaseline,
 } from "./variationOrders/deriveCurrentState.js";
 export type { ExecutionRecord, ExecutionRecordEntry } from "./models/executionRecord.js";
-export type { CreateExecutionRecordInput } from "./executionRecords/executionRecords.js";
+export type { CreateExecutionRecordInput, ExecutionOverviewRow } from "./executionRecords/executionRecords.js";
 export {
   computeExecutedToDate,
   computeRemainingQuantity,
+  computeExecutionOverview,
+  computeExecutionRecordValue,
   createExecutionRecord,
 } from "./executionRecords/executionRecords.js";
 export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";

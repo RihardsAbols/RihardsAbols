@@ -1,4 +1,11 @@
+import { round2 } from "../calculations/boq.js";
+import type { BoqItem, BoqSection } from "../models/boq.js";
 import type { ExecutionRecord } from "../models/executionRecord.js";
+
+/** Pozīcijas vienības izmaksa (darba alga+materiāli+mehānismi), izslēgtai pozīcijai vienmēr 0 - konsekventi ar calculateItemCosts. */
+function itemUnitCost(item: BoqItem): number {
+  return item.excluded ? 0 : item.unitLaborCost + item.unitMaterialsCost + item.unitMechanismsCost;
+}
 
 /**
  * Kumulatīvais izpildītais daudzums pozīcijai VISOS izpildes aktos
@@ -46,4 +53,69 @@ export function createExecutionRecord(input: CreateExecutionRecordInput): Execut
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * Viena izpildes akta EUR vērtība - visu tā ierakstu izpildīto daudzumu ×
+ * attiecīgās pozīcijas vienības izmaksa, summēts NEATKARĪGI no mērvienības
+ * (šī ir naudas summa, ne daudzums - atšķirībā no vēstures tabulas "Kopā
+ * izpildīts šajā periodā" ExecutionRecords.tsx, kas summē jēlos daudzumus un
+ * tāpēc jēgpilna tikai vienas mērvienības sadaļām). Lieto pozīcijas
+ * PAŠREIZĒJO vienības izmaksu (currentItemsById), nevis vēsturisko cenu akta
+ * brīdī, kas netiek glabāta atsevišķi - konsekventi ar to, ka arī atlikums
+ * rēķina pret pašreizējo daudzumu. Pozīcija, kas currentItemsById nav
+ * atrodama, tiek izlaista no summas.
+ */
+export function computeExecutionRecordValue(record: ExecutionRecord, currentItemsById: Map<string, BoqItem>): number {
+  let total = 0;
+  for (const entry of record.entries) {
+    const item = currentItemsById.get(entry.itemId);
+    if (!item) continue;
+    total += entry.executedQuantity * itemUnitCost(item);
+  }
+  return round2(total);
+}
+
+export interface ExecutionOverviewRow {
+  sectionId: string;
+  sectionName: string;
+  itemId: string;
+  code: string;
+  description: string;
+  unit: string;
+  currentQuantity: number;
+  executedToDate: number;
+  remainingQuantity: number;
+  executedValue: number;
+}
+
+/**
+ * Izpildes pārskats visām sadaļu pozīcijām, kur ir vismaz kāda izpilde
+ * (executedToDate !== 0) - pozīcijas bez izpildes tiek izlaistas, tāpat kā
+ * diffAgainstBaseline izlaiž nemainītas pozīcijas. `currentSections` ir
+ * ATVASINĀTAIS (bāze + apstiprinātās VO) stāvoklis, lai currentQuantity/
+ * remainingQuantity atbilstu tam, kas šobrīd redzams "Tāme" cilnē/eksporta
+ * sadaļu lapās.
+ */
+export function computeExecutionOverview(currentSections: BoqSection[], executionRecords: ExecutionRecord[]): ExecutionOverviewRow[] {
+  const rows: ExecutionOverviewRow[] = [];
+  for (const section of currentSections) {
+    for (const item of section.items) {
+      const executedToDate = computeExecutedToDate(executionRecords, item.id);
+      if (executedToDate === 0) continue;
+      rows.push({
+        sectionId: section.id,
+        sectionName: section.name,
+        itemId: item.id,
+        code: item.code,
+        description: item.description,
+        unit: item.unit,
+        currentQuantity: item.quantity,
+        executedToDate,
+        remainingQuantity: computeRemainingQuantity(item.quantity, executedToDate),
+        executedValue: round2(executedToDate * itemUnitCost(item)),
+      });
+    }
+  }
+  return rows;
 }

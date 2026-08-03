@@ -1,10 +1,27 @@
 import { describe, expect, it } from "vitest";
+import type { BoqItem, BoqSection } from "../src/models/boq.js";
 import type { ExecutionRecord } from "../src/models/executionRecord.js";
 import {
   computeExecutedToDate,
+  computeExecutionOverview,
+  computeExecutionRecordValue,
   computeRemainingQuantity,
   createExecutionRecord,
 } from "../src/executionRecords/executionRecords.js";
+
+function item(overrides: Partial<BoqItem> = {}): BoqItem {
+  return {
+    id: "item-1",
+    code: "1",
+    description: "Pozīcija",
+    unit: "gab",
+    quantity: 100,
+    unitLaborCost: 5,
+    unitMaterialsCost: 3,
+    unitMechanismsCost: 2,
+    ...overrides,
+  };
+}
 
 function record(overrides: Partial<ExecutionRecord> = {}): ExecutionRecord {
   return {
@@ -52,6 +69,78 @@ describe("computeRemainingQuantity", () => {
 
   it("can go negative when more was executed than currently contracted", () => {
     expect(computeRemainingQuantity(50, 80)).toBe(-30);
+  });
+});
+
+describe("computeExecutionRecordValue", () => {
+  it("sums executedQuantity times each item's unit cost, across items with different units", () => {
+    const itemsById = new Map<string, BoqItem>([
+      ["item-1", item({ id: "item-1", unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 })], // 10/unit
+      ["item-2", item({ id: "item-2", unit: "m2", unitLaborCost: 2, unitMaterialsCost: 1, unitMechanismsCost: 0 })], // 3/unit
+    ]);
+    const rec = record({
+      entries: [
+        { id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 20 }, // 200
+        { id: "e2", sectionId: "sec-1", itemId: "item-2", executedQuantity: 10 }, // 30
+      ],
+    });
+    expect(computeExecutionRecordValue(rec, itemsById)).toBe(230);
+  });
+
+  it("ignores entries whose item is no longer found in currentItemsById", () => {
+    const itemsById = new Map<string, BoqItem>([["item-1", item({ unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 })]]);
+    const rec = record({
+      entries: [
+        { id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 10 }, // 100
+        { id: "e2", sectionId: "sec-1", itemId: "missing", executedQuantity: 999 },
+      ],
+    });
+    expect(computeExecutionRecordValue(rec, itemsById)).toBe(100);
+  });
+
+  it("treats an excluded item's unit cost as 0", () => {
+    const itemsById = new Map<string, BoqItem>([["item-1", item({ excluded: true, unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 })]]);
+    const rec = record({ entries: [{ id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 10 }] });
+    expect(computeExecutionRecordValue(rec, itemsById)).toBe(0);
+  });
+});
+
+describe("computeExecutionOverview", () => {
+  const sections: BoqSection[] = [
+    {
+      id: "sec-1",
+      name: "Sadaļa 1",
+      estimateNumber: "1-1",
+      items: [
+        item({ id: "item-1", code: "1", quantity: 100, unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 }),
+        item({ id: "item-2", code: "2", quantity: 50, unitLaborCost: 1, unitMaterialsCost: 1, unitMechanismsCost: 0 }),
+      ],
+    },
+  ];
+
+  it("omits items with no execution at all", () => {
+    const rows = computeExecutionOverview(sections, []);
+    expect(rows).toEqual([]);
+  });
+
+  it("includes only items with executedToDate !== 0, with current/executed/remaining/value", () => {
+    const records = [record({ entries: [{ id: "e1", sectionId: "sec-1", itemId: "item-1", executedQuantity: 40 }] })];
+    const rows = computeExecutionOverview(sections, records);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sectionName: "Sadaļa 1",
+      code: "1",
+      currentQuantity: 100,
+      executedToDate: 40,
+      remainingQuantity: 60,
+      executedValue: 400, // 40 * (5+3+2)
+    });
+  });
+
+  it("can report a negative remainingQuantity when more was executed than currently contracted", () => {
+    const records = [record({ entries: [{ id: "e1", sectionId: "sec-1", itemId: "item-2", executedQuantity: 70 }] })];
+    const rows = computeExecutionOverview(sections, records);
+    expect(rows[0].remainingQuantity).toBe(-20);
   });
 });
 

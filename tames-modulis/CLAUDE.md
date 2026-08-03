@@ -81,7 +81,10 @@ Npm workspace ar divām pakotnēm:
     vērtībām), pievienojot arī kešotu `result`, lai fails rāda pareizas
     vērtības uzreiz, pat ja neviens neatver to Excel/LibreOffice.
     `exportBoqToBuffer` atgriež `ArrayBuffer` (nevis Node `Buffer`), lai
-    strādātu arī brauzerī.
+    strādātu arī brauzerī. Ja projektam ir VO, sadaļu lapām pievienotas
+    "Bāzes daudzums"/"Delta" kolonnas + "IZMAIŅAS" lapa; ja ir izpildes
+    akti, papildus "Izpildīts"/"Atlikums" kolonnas + "IZPILDES AKTI" lapa
+    — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk pilnu semantiku.
   - `import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`: kolonnas
     nosaka `detectImportColumns` (galvenes teksts), datu rindas atpazīst pēc
     mērvienības kolonnas (nevis rindas numura). Atvasinātās kolonnas
@@ -735,6 +738,81 @@ izveidots izpildes akts ar izpildītu daudzumu vienai pozīcijai — atlikums
 tabulā aprēķināts pareizi; jaunā VO izveides formā pareizi parādīts
 "Pieejamais atlikums"; mēģinot samazināt apjomu zem izpildītā, parādījās
 pareizs brīdinājuma teksts ar precīziem skaitļiem. Konsolē nav kļūdu.
+
+#### Izpildes akti Excel eksportā (Sesija 20)
+
+Līdz Sesijai 19 (ieskaitot) `state.executionRecords` Excel eksportā vispār
+neparādījās — nedz reģistrs, nedz ietekme uz sadaļu lapām. Lietotājs
+apstiprināja abas daļas (sadaļu kolonnas UN atsevišķa reģistra lapa, skat.
+zemāk), simetriski ar jau esošo VO/"IZMAIŅAS" pieeju.
+
+**Jaunas core funkcijas** (`executionRecords/executionRecords.ts`), abas
+testētas (`test/executionRecords.test.ts`):
+- `computeExecutionRecordValue(record, currentItemsById)` — viena izpildes
+  akta EUR vērtība (visu tā `entries` izpildīto daudzumu × attiecīgās
+  pozīcijas vienības izmaksa, summēts NEATKARĪGI no mērvienības, jo tā ir
+  naudas summa, ne daudzums — atšķirībā no `ExecutionRecords.tsx` vēstures
+  tabulas "Kopā izpildīts šajā periodā", kas summē jēlos daudzumus un tāpēc
+  jēgpilna tikai vienas mērvienības gadījumā). Lieto pozīcijas PAŠREIZĒJO
+  vienības izmaksu, nevis vēsturisko cenu akta brīdī (kas netiek glabāta
+  atsevišķi) — konsekventi ar to, ka arī atlikums rēķina pret pašreizējo
+  daudzumu, nevis akta laika daudzumu.
+- `computeExecutionOverview(currentSections, executionRecords)` — pārskata
+  rindas VISĀM pozīcijām ar vismaz kādu izpildi (`executedToDate !== 0`) —
+  pozīcijas bez izpildes izlaistas, tāpat kā `diffAgainstBaseline` izlaiž
+  nemainītas pozīcijas.
+
+Abas funkcijas izslēgtai pozīcijai (`BoqItem.excluded`) lieto vienības
+izmaksu `0`, konsekventi ar `calculateItemCosts`.
+
+**Excel eksportā** (`excel/export.ts`) divas izmaiņas:
+1. Katrai sadaļu lapai (`writeSectionSheet`) divas jaunas kolonnas STINGRI
+   AIZ jau esošajām VO "Bāzes daudzums"/"Delta" kolonnām (`EXECUTION_COLUMNS`,
+   pēc `VARIATION_COLUMNS.quantityDelta`) — "Izpildīts" (`computeExecutedToDate`)
+   un "Atlikums" (`computeRemainingQuantity`). Renderētas TIKAI, ja
+   `state.executionRecords.length > 0` (`showExecution` karogs) — praksē tas
+   vienmēr nozīmē arī iesaldētu bāzi, jo UI "Izpildes akti" cilne pati ir
+   redzama tikai pēc iesaldēšanas, bet kods to tieši nepieņem (pārbauda
+   `executionRecords`, nevis `baselineApprovedAt`), lai abas kolonnu grupas
+   paliktu neatkarīgas viena no otras (projekts ar VO, bet BEZ izpildes,
+   joprojām rāda tikai Bāzes/Delta, nevis tukšas Izpildīts/Atlikums kolonnas).
+2. Jauna **"IZPILDES AKTI" darblapa** (`writeExecutionRecordsSheet`, tikai
+   ja projektam ir vismaz viens izpildes akts) — akta reģistrs (viena rinda
+   katram aktam: periods/datums/apstiprinātājs/pozīciju skaits/akta EUR
+   vērtība caur `computeExecutionRecordValue`) + "Izpildes pārskats"
+   tabula (`computeExecutionOverview`, visas sadaļas kopā) ar Sadaļa/Nr./
+   Nosaukums/Mērv./Pašreizējais daudzums/Izpildīts līdz šim/Atlikums/
+   Izpildītā vērtība. Sekmīga struktūra/rindu skaitīšana kopēta no
+   `writeVariationOrdersSheet` (galvenes bloks -> reģistra virsraksts+tabula
+   -> pārskata virsraksts+tabula), tai skaitā tas pats kolonnu-platuma
+   kompromiss (viena kolonnu grupa, divas nozīmes pa tabulām).
+
+Bez izpildes akta datiem (`executionRecords.length === 0`) eksports paliek
+pilnībā nemainīgs (backward compatible), tāpat kā VO eksporta izmaiņas
+Sesijā 18.
+
+**Manuāli pārbaudīts** (pagaidu vitest skripts, kas rakstīja reālu `.xlsx`
+uz disku, izdzēsts pēc lietošanas — tāpat kā Sesijas 14 testa skripta
+piezīme): divi izpildes akti (janvāris: pozīcija "a" 40 vienības; februāris:
+"a" +50, "b" 50) pret VO-koriģētu sadaļu (pozīcija "a" 100 -> 130 caur VO).
+Pārbaudīts ar `openpyxl` (`data_only=True`): sadaļas lapā pozīcijai "a"
+Izpildīts=90 (40+50 kumulatīvi), Atlikums=40 (130-90); pozīcijai "b"
+Izpildīts=50, Atlikums=0. "IZPILDES AKTI" lapā reģistra rindas 400€ (janvāra
+akts, tikai "a": 40×10) un 700€ (februāra akts: "a" 50×10=500 +
+"b" 50×4=200); pārskata tabulā abas pozīcijas ar pareizu pašreizējo/
+izpildīto/atlikuma/vērtības kolonnu. Visi skaitļi sakrita ar roku rēķinātu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 90/90 testi zaļi (82 + 8 jauni: 6 `computeExecutionRecordValue`/
+  `computeExecutionOverview` unit testi, 2 Excel eksporta testi ar/bez
+  izpildes akta datiem).
+- ✅ Typecheck tīrs abās pakotnēs.
+- ✅ Manuāli pārbaudīts reāls ģenerēts `.xlsx` fails ar `openpyxl`
+  (sadaļu kolonnas UN "IZPILDES AKTI" lapa), ne tikai `exportBoqToWorkbook`
+  tiešā unit testā.
+- ⚠️ **Nav vēl pārbaudīts ar reālo 53-lapu/12876 pozīciju VELVE failu** —
+  lietotājs apstiprināja, ka arī to vajag šajā sesijā, bet fails vēl jāsaņem
+  no jauna (skat. PROGRESS.md Sesija 20).
 
 ### Favicon
 

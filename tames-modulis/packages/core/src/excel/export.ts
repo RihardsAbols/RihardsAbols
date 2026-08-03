@@ -1,6 +1,8 @@
 import ExcelJS from "exceljs";
 import { calculateItemCosts, summarizeBoq } from "../calculations/boq.js";
-import type { BoqSection, BoqState } from "../models/boq.js";
+import { computeExecutedToDate, computeExecutionOverview, computeExecutionRecordValue, computeRemainingQuantity } from "../executionRecords/executionRecords.js";
+import type { BoqItem, BoqSection, BoqState } from "../models/boq.js";
+import type { ExecutionRecord } from "../models/executionRecord.js";
 import type { VariationOrder } from "../models/variationOrder.js";
 import { computeVariationOrderDirectTotalImpact, deriveCurrentSections, diffAgainstBaseline } from "../variationOrders/deriveCurrentState.js";
 import { colLetter } from "./cellValue.js";
@@ -85,6 +87,25 @@ const VARIATION_COLUMN_WIDTHS: Record<number, number> = {
   [VARIATION_COLUMNS.spacer]: 3,
   [VARIATION_COLUMNS.baselineQuantity]: 13,
   [VARIATION_COLUMNS.quantityDelta]: 11,
+};
+
+// Extra columns appended AFTER VARIATION_COLUMNS, only written when the
+// project has at least one execution record (state.executionRecords.length >
+// 0) - which in practice always implies a frozen baseline too, since the UI
+// only exposes "Izpildes akti" after "Apstiprināt bāzes tāmi" (see
+// ProjectEditor.tsx). Kept as its own column group (not merged into
+// VARIATION_COLUMNS) so a project using VO but not yet execution tracking
+// still gets the unchanged Bāzes daudzums/Delta-only layout.
+const EXECUTION_COLUMNS = {
+  spacer: VARIATION_COLUMNS.quantityDelta + 1,
+  executedToDate: VARIATION_COLUMNS.quantityDelta + 2,
+  remaining: VARIATION_COLUMNS.quantityDelta + 3,
+} as const;
+
+const EXECUTION_COLUMN_WIDTHS: Record<number, number> = {
+  [EXECUTION_COLUMNS.spacer]: 3,
+  [EXECUTION_COLUMNS.executedToDate]: 13,
+  [EXECUTION_COLUMNS.remaining]: 11,
 };
 
 /**
@@ -188,11 +209,18 @@ function writeSectionSheet(
 ): number {
   const sheet = workbook.addWorksheet(sheetName);
 
+  const showExecution = state.executionRecords.length > 0;
+
   for (const [col, width] of Object.entries(COLUMN_WIDTHS)) {
     sheet.getColumn(Number(col)).width = width;
   }
   if (baselineSection) {
     for (const [col, width] of Object.entries(VARIATION_COLUMN_WIDTHS)) {
+      sheet.getColumn(Number(col)).width = width;
+    }
+  }
+  if (showExecution) {
+    for (const [col, width] of Object.entries(EXECUTION_COLUMN_WIDTHS)) {
       sheet.getColumn(Number(col)).width = width;
     }
   }
@@ -238,6 +266,12 @@ function writeSectionSheet(
     sheet.getCell(headerRow, VARIATION_COLUMNS.baselineQuantity).font = HEADER_FONT;
     sheet.getCell(headerRow, VARIATION_COLUMNS.quantityDelta).value = "Delta";
     sheet.getCell(headerRow, VARIATION_COLUMNS.quantityDelta).font = HEADER_FONT;
+  }
+  if (showExecution) {
+    sheet.getCell(headerRow, EXECUTION_COLUMNS.executedToDate).value = "Izpildīts";
+    sheet.getCell(headerRow, EXECUTION_COLUMNS.executedToDate).font = HEADER_FONT;
+    sheet.getCell(headerRow, EXECUTION_COLUMNS.remaining).value = "Atlikums";
+    sheet.getCell(headerRow, EXECUTION_COLUMNS.remaining).font = HEADER_FONT;
   }
 
   const baselineItemsById = baselineSection ? new Map(baselineSection.items.map((item) => [item.id, item])) : null;
@@ -289,6 +323,16 @@ function writeSectionSheet(
         deltaCell.value = item.quantity;
         deltaCell.numFmt = QUANTITY_FORMAT;
       }
+    }
+
+    if (showExecution) {
+      const executedToDate = computeExecutedToDate(state.executionRecords, item.id);
+      const executedCell = sheet.getCell(row, EXECUTION_COLUMNS.executedToDate);
+      executedCell.value = executedToDate;
+      executedCell.numFmt = QUANTITY_FORMAT;
+      const remainingCell = sheet.getCell(row, EXECUTION_COLUMNS.remaining);
+      remainingCell.value = computeRemainingQuantity(item.quantity, executedToDate);
+      remainingCell.numFmt = QUANTITY_FORMAT;
     }
 
     sheet.getCell(row, TAME_COLUMNS.unitLabor).value = item.unitLaborCost;
@@ -489,6 +533,114 @@ function writeVariationOrdersSheet(
   }
 }
 
+// Shares columns 1-5 between two logical tables (akta reģistrs, izpildes
+// pārskats), same tradeoff as VARIATION_ORDERS_SHEET_COLUMN_WIDTHS - widths
+// picked wide enough for whichever table's content in that column is longer.
+const EXECUTION_RECORDS_SHEET_COLUMN_WIDTHS = [20, 12, 32, 18, 20, 16, 12, 20];
+
+/**
+ * Writes the "IZPILDES AKTI" worksheet - an akta reģistrs (one row per
+ * ExecutionRecord: period/datums/apstiprināja/pozīciju skaits/šī akta EUR
+ * vērtība, see computeExecutionRecordValue) followed by a pārskata table of
+ * every pozīcija with at least some execution (see computeExecutionOverview).
+ * Only called when the project has at least one execution record (see
+ * exportBoqToWorkbook) - a project that never used this feature gets no
+ * extra sheet, keeping its export unchanged.
+ */
+function writeExecutionRecordsSheet(workbook: ExcelJS.Workbook, state: BoqState, currentSections: BoqSection[]): void {
+  const sheet = workbook.addWorksheet("IZPILDES AKTI");
+  EXECUTION_RECORDS_SHEET_COLUMN_WIDTHS.forEach((width, i) => {
+    sheet.getColumn(i + 1).width = width;
+  });
+
+  const headerLines = writeProjectHeaderBlock(sheet, state, 2, 7);
+  let row = headerLines + 2; // viena tukša atdalītājrinda
+
+  sheet.getCell(row, 1).value = "Izpildes aktu reģistrs";
+  sheet.getCell(row, 1).font = { ...HEADER_FONT, size: 13 };
+  row += 2;
+
+  const registerHeaderRow = row;
+  const registerHeaders = ["Periods", "Datums", "Apstiprināja", "Pozīciju skaits", "Akta vērtība (EUR)"];
+  registerHeaders.forEach((label, i) => {
+    const cell = sheet.getCell(registerHeaderRow, i + 1);
+    cell.value = label;
+    cell.font = HEADER_FONT;
+  });
+  row += 1;
+
+  const currentItemsById = new Map<string, BoqItem>(currentSections.flatMap((s) => s.items.map((item) => [item.id, item] as const)));
+
+  const firstRecordRow = row;
+  state.executionRecords.forEach((record: ExecutionRecord, i) => {
+    const r = firstRecordRow + i;
+    sheet.getCell(r, 1).value = record.period;
+    sheet.getCell(r, 2).value = record.date;
+    sheet.getCell(r, 3).value = record.approvedBy;
+    sheet.getCell(r, 4).value = record.entries.length;
+    const valueCell = sheet.getCell(r, 5);
+    valueCell.value = computeExecutionRecordValue(record, currentItemsById);
+    valueCell.numFmt = MONEY_FORMAT;
+  });
+  row = firstRecordRow + state.executionRecords.length + 1; // + viena tukša atdalītājrinda
+
+  sheet.getCell(row, 1).value = "Izpildes pārskats (pozīcijas ar izpildi)";
+  sheet.getCell(row, 1).font = { ...HEADER_FONT, size: 13 };
+  row += 2;
+
+  const overviewHeaderRow = row;
+  const overviewHeaders = [
+    "Sadaļa",
+    "Nr.",
+    "Nosaukums",
+    "Mērv.",
+    "Pašreizējais daudzums",
+    "Izpildīts līdz šim",
+    "Atlikums",
+    "Izpildītā vērtība (EUR)",
+  ];
+  overviewHeaders.forEach((label, i) => {
+    const cell = sheet.getCell(overviewHeaderRow, i + 1);
+    cell.value = label;
+    cell.font = HEADER_FONT;
+  });
+  row += 1;
+
+  const overviewRows = computeExecutionOverview(currentSections, state.executionRecords);
+  overviewRows.forEach((overviewRow, i) => {
+    const r = row + i;
+    sheet.getCell(r, 1).value = overviewRow.sectionName;
+    sheet.getCell(r, 2).value = overviewRow.code;
+    const nameCell = sheet.getCell(r, 3);
+    nameCell.value = overviewRow.description;
+    nameCell.alignment = { wrapText: true, vertical: "top" };
+    sheet.getCell(r, 4).value = overviewRow.unit;
+
+    const currentCell = sheet.getCell(r, 5);
+    currentCell.value = overviewRow.currentQuantity;
+    currentCell.numFmt = QUANTITY_FORMAT;
+
+    const executedCell = sheet.getCell(r, 6);
+    executedCell.value = overviewRow.executedToDate;
+    executedCell.numFmt = QUANTITY_FORMAT;
+
+    const remainingCell = sheet.getCell(r, 7);
+    remainingCell.value = overviewRow.remainingQuantity;
+    remainingCell.numFmt = QUANTITY_FORMAT;
+
+    const valueCell = sheet.getCell(r, 8);
+    valueCell.value = overviewRow.executedValue;
+    valueCell.numFmt = MONEY_FORMAT;
+  });
+
+  const lastRow = row + overviewRows.length;
+  for (const sheetRow of sheet.getRows(1, lastRow) ?? []) {
+    sheetRow?.eachCell({ includeEmpty: false }, (cell) => {
+      cell.font = { ...cell.font, name: "Arial" };
+    });
+  }
+}
+
 export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "tames-modulis";
@@ -537,7 +689,7 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
     cell.font = HEADER_FONT;
   });
 
-  const usedSheetNames = new Set<string>(["KOPSAVILKUMS", "IZMAIŅAS"]);
+  const usedSheetNames = new Set<string>(["KOPSAVILKUMS", "IZMAIŅAS", "IZPILDES AKTI"]);
   // A frozen baseline (state.baselineApprovedAt !== null) means state.sections
   // IS the bāze (never mutated after freeze, see models/boq.ts) - the sheets
   // below render the CURRENT scope (bāze + apstiprinātās VO), matching real
@@ -646,6 +798,10 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
 
   if (state.variationOrders.length > 0) {
     writeVariationOrdersSheet(workbook, state, state.sections, currentSections);
+  }
+
+  if (state.executionRecords.length > 0) {
+    writeExecutionRecordsSheet(workbook, state, currentSections);
   }
 
   return workbook;

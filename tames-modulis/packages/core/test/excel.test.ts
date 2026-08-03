@@ -6,6 +6,7 @@ import { exportBoqToBuffer, exportBoqToWorkbook } from "../src/excel/export.js";
 import { importBoqFromBuffer, importBoqFromWorkbook } from "../src/excel/import.js";
 import { createEmptyBoqState } from "../src/models/boq.js";
 import type { BoqItem, BoqState } from "../src/models/boq.js";
+import type { ExecutionRecord } from "../src/models/executionRecord.js";
 import type { VariationOrderChange } from "../src/models/variationOrder.js";
 import { createVariationOrder } from "../src/variationOrders/deriveCurrentState.js";
 
@@ -553,5 +554,73 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
     expect(newSheet.getCell(12, TAME_COLUMNS.quantity).value).toBe(7);
     expect(newSheet.getCell(12, baseCol).value).toBe("JAUNS");
     expect(newSheet.getCell(12, deltaCol).value).toBe(7);
+  });
+});
+
+describe("exportBoqToWorkbook execution records", () => {
+  it("omits Izpildīts/Atlikums columns and the IZPILDES AKTI sheet for a project with no execution records", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const workbook = exportBoqToWorkbook(state);
+
+    expect(workbook.getWorksheet("IZPILDES AKTI")).toBeUndefined();
+    const sheet = workbook.getWorksheet("1.1_Dem.")!;
+    expect(sheet.getCell(11, TAME_COLUMNS.totalAll + 5).value).toBeNull();
+  });
+
+  it("adds Izpildīts/Atlikums columns to section sheets, and an IZPILDES AKTI sheet with a register and an execution overview", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const record: ExecutionRecord = {
+      id: "rec-1",
+      period: "2026-01",
+      date: "2026-01-31",
+      approvedBy: "Inženieris",
+      entries: [{ id: "e1", sectionId: "sec-1", itemId: "a", executedQuantity: 40 }],
+      createdAt: "2026-01-31T00:00:00.000Z",
+      updatedAt: "2026-01-31T00:00:00.000Z",
+    };
+    state.executionRecords = [record];
+
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("1.1_Dem.")!;
+
+    const executedCol = TAME_COLUMNS.totalAll + 5;
+    const remainingCol = TAME_COLUMNS.totalAll + 6;
+    expect(sheet.getCell(11, executedCol).value).toBe("Izpildīts");
+    expect(sheet.getCell(11, remainingCol).value).toBe("Atlikums");
+
+    // item "a": quantity 130 (after VO) - 40 executed = 90 remaining.
+    expect(sheet.getCell(12, executedCol).value).toBe(40);
+    expect(sheet.getCell(12, remainingCol).value).toBe(90);
+    // item "b": no execution recorded, 0 executed, remaining = its own (unchanged) quantity.
+    expect(sheet.getCell(13, executedCol).value).toBe(0);
+    expect(sheet.getCell(13, remainingCol).value).toBe(50);
+
+    const execSheet = workbook.getWorksheet("IZPILDES AKTI")!;
+    expect(execSheet).toBeDefined();
+
+    // Header block (7 lines, no estimateNumber) rows 1-7, blank row 8, title row 9,
+    // blank row 10, register header row 11, one record at row 12.
+    expect(execSheet.getCell(9, 1).value).toBe("Izpildes aktu reģistrs");
+    expect(execSheet.getCell(11, 1).value).toBe("Periods");
+    expect(execSheet.getCell(12, 1).value).toBe("2026-01");
+    expect(execSheet.getCell(12, 2).value).toBe("2026-01-31");
+    expect(execSheet.getCell(12, 3).value).toBe("Inženieris");
+    expect(execSheet.getCell(12, 4).value).toBe(1);
+    expect(execSheet.getCell(12, 5).value).toBe(400); // 40 * (5+3+2 unit cost)
+
+    // Overview title row 14, blank, overview header row 16, data from row 17.
+    expect(execSheet.getCell(14, 1).value).toBe("Izpildes pārskats (pozīcijas ar izpildi)");
+    expect(execSheet.getCell(16, 1).value).toBe("Sadaļa");
+
+    expect(execSheet.getCell(17, 1).value).toBe("1.1_Dem.");
+    expect(execSheet.getCell(17, 2).value).toBe("1");
+    expect(execSheet.getCell(17, 4).value).toBe("m3");
+    expect(execSheet.getCell(17, 5).value).toBe(130); // pašreizējais daudzums
+    expect(execSheet.getCell(17, 6).value).toBe(40); // izpildīts līdz šim
+    expect(execSheet.getCell(17, 7).value).toBe(90); // atlikums
+    expect(execSheet.getCell(17, 8).value).toBe(400); // izpildītā vērtība
+
+    // item "b" and item "c" have no execution - only one overview row.
+    expect(execSheet.getCell(18, 1).value).toBeNull();
   });
 });

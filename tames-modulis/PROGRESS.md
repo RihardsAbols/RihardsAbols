@@ -1176,37 +1176,74 @@ saglabātais akts vēsturē satur pareizo kopējo summu (30). Core testi
 (82/82), typecheck un `vite build` (abi tīri) palaisti pēc šī papildinājuma
 bez izmaiņām nepieciešamības.
 
+## Sesija 20: Izpildes akti Excel eksportā — ✅ pabeigts (daļēji, skat. zemāk)
+
+**Uzdevums:** kandidāts #1 no Sesijas 19 atlikušā saraksta — lietotājs
+apstiprināja pirms ieviešanas (jautāts tieši, skat. zemāk abi lēmumi).
+Lietotājs arī pieprasīja, lai šajā pašā sesijā tiktu pārbaudīta pilna VO +
+izpildes aktu plūsma ar reālo 53-lapu VELVE failu (kandidāts #5) — tas VĒL
+NAV izdarīts (fails jāsaņem no jauna, skat. zemāk atjaunināto sarakstu).
+
+**Lēmumi (apstiprināti ar lietotāju, jautāti tieši pirms ieviešanas):**
+- **Eksporta apjoms:** ABAS daļas — sadaļu lapām jaunas "Izpildīts"/
+  "Atlikums" kolonnas UN atsevišķa "IZPILDES AKTI" reģistra darblapa,
+  simetriski ar jau esošo VO/"IZMAIŅAS" pieeju (nevis tikai viena no tām).
+- **Naudas vērtība reģistrā:** rādīt EUR summu par periodu (izpildītais
+  daudzums × pozīcijas vienības izmaksa, summēts NEATKARĪGI no
+  mērvienības), nevis tikai pozīciju skaitu bez naudas summas.
+
+**Implementēts** (tikai `packages/core`, `packages/web` netika skarts —
+šis ir tikai eksporta paplašinājums, ne UI): skat. CLAUDE.md "Izpildes akti
+Excel eksportā (Sesija 20)" pilnu tehnisko aprakstu — divas jaunas core
+funkcijas (`computeExecutionRecordValue`, `computeExecutionOverview`),
+jaunas "Izpildīts"/"Atlikums" kolonnas sadaļu lapās (`EXECUTION_COLUMNS`,
+stingri aiz VO kolonnām), jauna "IZPILDES AKTI" darblapa
+(`writeExecutionRecordsSheet`).
+
+**Manuāli pārbaudīts** ar pagaidu vitest skriptu, kas rakstīja reālu
+`.xlsx` uz disku (izdzēsts pēc lietošanas) un pārbaudīts ar `openpyxl` —
+divi izpildes akti pret VO-koriģētu sadaļu, visi skaitļi (kumulatīvais
+izpildītais, atlikums, akta EUR vērtība, pārskata tabula) sakrita ar roku
+rēķinātu. Skat. CLAUDE.md pilnu pārbaudes aprakstu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 90/90 testi zaļi (82 + 8 jauni).
+- ✅ Typecheck tīrs abās pakotnēs (`npx tsc --noEmit` core un web).
+- ✅ Manuāli pārbaudīts reāls ģenerēts `.xlsx` fails ar `openpyxl`.
+- ⚠️ **NAV pārbaudīts ar reālo 53-lapu/12876 pozīciju VELVE failu** — lietotājs
+  to pieprasīja šai sesijai, bet failu vajag saņemt no jauna (netika
+  pievienots sesijas laikā). Atlikts kā daļa no NĀKAMĀ SOĻA saraksta zemāk.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Šis NAV lietotāja tieši pieprasīts nākamais uzdevums (atšķirībā no Sesijas
-18 beigu ieraksta) — tie ir atvērti pavedieni/ierobežojumi, kas radās
-Sesijās 18-19, kurus vērts PAJAUTĀT lietotājam nākamās sesijas sākumā, PIRMS
-izvēlēties, pie kā strādāt tālāk:
+Sesijā 20 tika izlemts strādāt pie kandidāta #1 (Izpildes akti Excel
+eksportā, tagad pabeigts) UN lietotājs apstiprināja, ka arī reāla VELVE
+faila pārbaude (bijušais kandidāts #5) vajadzīga šai pašai sesijai — tas
+VĒL NAV izdarīts, jo fails nebija pieejams vidē. Tas ir tiešs, apstiprināts
+nākamais solis (nevis kandidāts, par ko vēlreiz jājautā) — vajag lietotāju
+PAJAUTĀT/atgādināt pievienot to pašu 53-lapu/12876 pozīciju failu, kas tika
+izmantots Sesijās 12/13/17, un tad palaist pilnu VO + izpildes aktu ciklu
+(bāzes iesaldēšana -> VO -> akti -> Excel eksports, ieskaitot Sesijas 20
+jaunās kolonnas/lapu) pret to.
 
-1. **Izpildes akti Excel eksportā** — pašlaik `state.executionRecords` NAV
-   atspoguļoti eksportētajā `.xlsx` failā vispār (nedz reģistrs, nedz
-   ietekme uz "Bāzes daudzums"/"Delta" kolonnām sadaļu lapās, kas šobrīd
-   rāda TIKAI bāzi/VO, ne izpildi). Vai vajag atsevišķu darblapu (piem.
-   "Izpildes akti") līdzīgi "IZMAIŅAS" lapai?
-2. **Izpildes aktu Excel imports** — Sesijā 19 apzināti atlikts (manuāla
+Pēc tam atlikušie kandidāti (NAV apstiprināts uzdevums, jājautā lietotājam):
+
+1. **Izpildes aktu Excel imports** — Sesijā 19 apzināti atlikts (manuāla
    ievade izvēlēta pirmajai versijai). Vai reāla lietošana rāda, ka manuāla
    ievade lielam projektam (tūkstošiem pozīciju katru mēnesi) ir par lēnu,
    un imports no reāla izpildes akta faila (līdzīgi
    `izpildes-akts-validacija` skill loģikai) kļūst vajadzīgs?
-3. **Izpildes akti/VO nav rediģējami/dzēšami pēc saglabāšanas** (apzināta
+2. **Izpildes akti/VO nav rediģējami/dzēšami pēc saglabāšanas** (apzināta
    audit-trail izvēle) — vai reālā lietošanā radīsies vajadzība labot kļūdu
    akta ievadē (piem. nepareizi ievadīts skaitlis) bez jauna korekcijas
    akta veidošanas?
-4. **"Pieejamais atlikums" redzams TIKAI VO izveides formā** — vai vajag arī
+3. **"Pieejamais atlikums" redzams TIKAI VO izveides formā** — vai vajag arī
    pastāvīgu "atlikums" kolonnu/skatu galvenajā "Tāme" cilnē (vai atsevišķā
    pārskata skatā), lai redzētu visu pozīciju atlikumus vienlaicīgi, nevis
    tikai vienu pozīciju uzreiz VO formā?
-5. **Reāla VELVE faila pilna plūsma** — Sesijas 18/19 funkcionalitāte
-   pārbaudīta tikai ar sintētiskiem/maziem testa projektiem (Playwright).
-   Vēl nav pārbaudīts pilns VO + izpildes aktu cikls ar reālu 53-lapu/12876
-   pozīciju failu (tas pats fails, kas izmantots Sesijās 12/13/17).
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18/19) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, pie kura no
-augstāk minētajiem punktiem (ja kāda vispār) strādāt tālāk — nevis pieņemt,
-ka viens no tiem ir automātiski nākamais uzdevums.
+Sesijas 18-20) un CLAUDE.md pilnībā. Vispirms pabeigt reālā VELVE faila
+pārbaudi (apstiprināts solis, skat. augšā), tad PAJAUTĀT lietotājam, pie
+kura no augstāk numurētajiem kandidātiem (ja kāda vispār) strādāt tālāk —
+nevis pieņemt, ka viens no tiem ir automātiski nākamais uzdevums.
