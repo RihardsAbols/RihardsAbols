@@ -78,6 +78,8 @@ describe("summarizeBoq", () => {
         materialsTotal: 300,
         mechanismsTotal: 200,
         directTotal: 1000,
+        discountAmount: 0,
+        directTotalAfterDiscount: 1000,
         overhead: 120,
         profit: 50,
         totalWithMarkup: 1170,
@@ -89,12 +91,17 @@ describe("summarizeBoq", () => {
         materialsTotal: 75,
         mechanismsTotal: 25,
         directTotal: 200,
+        discountAmount: 0,
+        directTotalAfterDiscount: 200,
         overhead: 24,
         profit: 10,
         totalWithMarkup: 234,
       },
     ]);
     expect(summary.directTotal).toBe(1200);
+    expect(summary.discountRate).toBe(0);
+    expect(summary.discountAmount).toBe(0);
+    expect(summary.directTotalAfterDiscount).toBe(1200);
     expect(summary.overhead).toBe(144);
     expect(summary.profit).toBe(60);
     expect(summary.subtotal).toBe(1404);
@@ -103,12 +110,49 @@ describe("summarizeBoq", () => {
     expect(summary.total).toBe(1698.84);
   });
 
+  it("subtracts the discount from direct costs before computing overhead/profit", () => {
+    const state = createEmptyBoqState("proj-discount", "Atlaides tests");
+    state.overheadRate = 0.12;
+    state.profitRate = 0.05;
+    state.vatRate = 0.21;
+    state.discountRate = 0.1;
+    state.sections = [
+      section([item({ id: "a", quantity: 100, unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2 })], {
+        id: "sec-1",
+        name: "Zemes darbi",
+      }),
+    ];
+
+    const summary = summarizeBoq(state);
+
+    // directTotal 1000, discount 10% -> 100, base for markup 900.
+    expect(summary.sections[0].directTotal).toBe(1000);
+    expect(summary.sections[0].discountAmount).toBe(100);
+    expect(summary.sections[0].directTotalAfterDiscount).toBe(900);
+    expect(summary.sections[0].overhead).toBe(108); // 900 * 0.12
+    expect(summary.sections[0].profit).toBe(45); // 900 * 0.05
+    expect(summary.sections[0].totalWithMarkup).toBe(1053); // 900 + 108 + 45
+
+    expect(summary.directTotal).toBe(1000);
+    expect(summary.discountRate).toBe(0.1);
+    expect(summary.discountAmount).toBe(100);
+    expect(summary.directTotalAfterDiscount).toBe(900);
+    expect(summary.overhead).toBe(108);
+    expect(summary.profit).toBe(45);
+    expect(summary.subtotal).toBe(1053);
+    expect(summary.vatAmount).toBe(221.13); // 1053 * 0.21
+    expect(summary.total).toBe(1274.13);
+  });
+
   it("returns all zeros for a project with no sections", () => {
     const state = createEmptyBoqState("proj-2", "Tukšs projekts");
     const summary = summarizeBoq(state);
     expect(summary).toEqual({
       sections: [],
       directTotal: 0,
+      discountRate: state.discountRate,
+      discountAmount: 0,
+      directTotalAfterDiscount: 0,
       overheadRate: state.overheadRate,
       overhead: 0,
       profitRate: state.profitRate,

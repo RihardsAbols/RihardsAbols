@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createEmptyBoqState,
   CURRENT_SCHEMA_VERSION,
+  DEFAULT_DISCOUNT_RATE,
   DEFAULT_OVERHEAD_RATE,
   DEFAULT_PROFIT_RATE,
   DEFAULT_VAT_RATE,
@@ -108,6 +109,23 @@ describe("migrateToCurrent", () => {
     expect(migrated.vatRate).toBe(DEFAULT_VAT_RATE);
     expect(migrated.overheadRate).toBe(DEFAULT_OVERHEAD_RATE);
     expect(migrated.profitRate).toBe(DEFAULT_PROFIT_RATE);
+    expect(migrated.discountRate).toBe(DEFAULT_DISCOUNT_RATE);
+  });
+
+  it("preserves an already-present discountRate instead of overwriting it during migration", () => {
+    const v3 = {
+      schemaVersion: 3,
+      projectId: "proj-8",
+      projectName: "v3 ar atlaidi",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0.07,
+      sections: [],
+    };
+    const migrated = migrateToCurrent(v3);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.discountRate).toBe(0.07);
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {

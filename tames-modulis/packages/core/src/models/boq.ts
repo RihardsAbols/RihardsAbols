@@ -28,15 +28,23 @@ export interface BoqState {
   overheadRate: number;
   /** Peļņas likme no tiešajām izmaksām, piem. 0.05 nozīmē 5%. */
   profitRate: number;
+  /**
+   * Atlaides likme no tiešajām izmaksām, piem. 0.05 nozīmē 5%. Atskaitīta
+   * PIRMS virsizdevumiem/peļņas (skat. calculations/boq.ts summarizeBoq).
+   * Projekta līmenī, ne pa sadaļām/pozīcijām.
+   */
+  discountRate: number;
   sections: BoqSection[];
   createdAt: string;
   updatedAt: string;
 }
 
-// v3 replaced the single `unitPrice` with a darba alga/materiāli/mehānismi
-// split and added overheadRate/profitRate, matching the Līguma tāme format
-// used by the izpildes-akts-validacija skill (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 3;
+// v4 added the project-level discountRate (atskaitīta no tiešajām izmaksām
+// pirms virsizdevumiem/peļņas). v3 replaced the single `unitPrice` with a
+// darba alga/materiāli/mehānismi split and added overheadRate/profitRate,
+// matching the Līguma tāme format used by the izpildes-akts-validacija skill
+// (see storage/migrations).
+export const CURRENT_SCHEMA_VERSION = 4;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;
@@ -47,6 +55,9 @@ export const DEFAULT_OVERHEAD_RATE = 0.12;
 /** Standarta peļņas likme (skat. izpildes-akts-validacija skill). */
 export const DEFAULT_PROFIT_RATE = 0.05;
 
+/** Noklusējuma atlaides likme - bez atlaides. */
+export const DEFAULT_DISCOUNT_RATE = 0;
+
 export function createEmptyBoqState(projectId: string, projectName: string): BoqState {
   const now = new Date().toISOString();
   return {
@@ -56,6 +67,7 @@ export function createEmptyBoqState(projectId: string, projectName: string): Boq
     vatRate: DEFAULT_VAT_RATE,
     overheadRate: DEFAULT_OVERHEAD_RATE,
     profitRate: DEFAULT_PROFIT_RATE,
+    discountRate: DEFAULT_DISCOUNT_RATE,
     sections: [],
     createdAt: now,
     updatedAt: now,

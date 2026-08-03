@@ -26,12 +26,13 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3`, `migrateToCurrent` atbalsta pakāpenisku
+  Pašreiz `v1 -> v2 -> v3 -> v4`, `migrateToCurrent` atbalsta pakāpenisku
   migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
-  (`calculateSectionDirectTotal`), un pilns kopsavilkums ar virsizdevumiem,
-  peļņu un PVN (`summarizeBoq` -> `BoqSummary`).
+  (`calculateSectionDirectTotal`), un pilns kopsavilkums ar atlaidi,
+  virsizdevumiem, peļņu un PVN (`summarizeBoq` -> `BoqSummary`) — skat.
+  "Atlaide (diskonts)" zemāk aprēķina secību.
 - `src/excel/` — Excel imports/eksports. **Nav daļa no universālā
   `src/index.ts` barela** (skat. zemāk) — pieejams caur
   `@tames-modulis/core/excel` (`src/excel/index.ts`).
@@ -98,7 +99,7 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   dinamiski importē `@tames-modulis/core/excel` failu izvēles apstrādē,
   nevis statiski.
 - `src/components/ProjectEditor.tsx` — sadaļu/pozīciju rediģēšana, likmju
-  (virsizdevumi/peļņa/PVN) rediģēšana, dzīvs kopsavilkums (`summarizeBoq`
+  (atlaide/virsizdevumi/peļņa/PVN) rediģēšana, dzīvs kopsavilkums (`summarizeBoq`
   pārrēķināts katrā render), "Saglabāt" (IndexedDB), "Eksportēt Excel"
   (lejupielādē `.xlsx`) un "Importēt Excel (pārrakstīt sadaļas)" (imports
   esošā, jau atvērtā projektā — skat. "Imports esošā projektā" zemāk).
@@ -122,6 +123,13 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   `v1`. Nezināma nākotnes versija izmet `UnsupportedSchemaVersionError`.
 - **PVN likme (`vatRate`) glabājas katrā projektā**, nevis kā globāla
   konstante. Noklusējums — `DEFAULT_VAT_RATE = 0.21` (LV standarta likme).
+  Viena likme visam projektam — dažādas PVN likmes pa pozīcijām/sadaļām
+  apzināti nav atbalstītas (skat. "Atlaide (diskonts)" zemāk, Sesija 15).
+- **Atlaide (`discountRate`) ir projekta līmenī**, viena likme visam
+  projektam (nevis pa sadaļām/pozīcijām) — simetriski ar `vatRate`/
+  `overheadRate`/`profitRate`. Noklusējums `DEFAULT_DISCOUNT_RATE = 0`
+  (bez atlaides). Skat. "Atlaide (diskonts)" zemāk pilnu pamatojumu un
+  aprēķina secību.
 - **Aprēķini noapaļo tikai vienreiz, beigās** (`summarizeBoq`) — sadaļu un
   kopējās summas tiek saskaitītas no nenoapaļotiem starprezultātiem, lai
   daudzu sīku pozīciju gadījumā noapaļošanas kļūda nesakrātos.
@@ -333,6 +341,36 @@ persistē pēc "Saglabāt" + lapas pārlādes. Pārbaudīts arī, ka `exceljs`
 chunk (~946KB) svaigā lapas ielādē un projekta izveidē NETIEK pieprasīts —
 tikai pēc importa klikšķa (chunk identificēts pēc izmēra, ne faila
 nosaukuma, jo Vite hash nosaukumi nesatur "excel").
+
+### Atlaide (diskonts)
+
+Sesijā 15 pievienots projekta līmeņa `discountRate` (skat. "Lēmumi" augšā).
+
+**Aprēķina secība (apstiprināta ar lietotāju): atskaitīta no tiešajām
+izmaksām, PIRMS virsizdevumiem/peļņas.** `summarizeBoq` (`calculations/
+boq.ts`) katrai sadaļai un projektam kopā vispirms rēķina
+`discountAmount = directTotal * discountRate` un
+`directTotalAfterDiscount = directTotal - discountAmount`, un tikai TAD no
+`directTotalAfterDiscount` (nevis no neskartā `directTotal`) rēķina
+virsizdevumus un peļņu. `directTotal` pats par sevi (pirms atlaides)
+**paliek neskarts** — tā ir tiešā pārbaudes atsauce pret avota Līguma tāmes
+"Tāmes izmaksas" šūnu (skat. Sesija 12 DEM lapas pārbaudi), un mainīt tā
+nozīmi būtu klusi salauzis šo pārbaudes ķēdi.
+
+**Excel eksportā** (`excel/export.ts`) `KOPSAVILKUMS` lapā pievienota
+"Atlaides likme:" rinda pieņēmumu blokā un divas kolonnas kopsavilkuma
+tabulā ("Atlaide", "Tiešās izmaksas pēc atlaides") starp "Tiešās izmaksas"
+un "Virsizdevumi" — ar formulām, tāpat kā pārējās šūnas šajā failā.
+**Imports** (`excel/import.ts`) nemainījās — tas jau iepriekš nelasīja
+likmes atpakaļ no `KOPSAVILKUMS` lapas (tikai sadaļas/pozīcijas), tāpēc
+`discountRate` arī netiek importēts, konsekventi ar jau dokumentēto
+"Excel imports/eksports ir daļēji zaudējošs" lēmumu.
+
+**UI** (`ProjectEditor.tsx`) "Atlaide (%)" lauks parādās `.rates` blokā
+pirms "Virsizdevumi" (atbilstoši aprēķina secībai), un "Atlaide: ..."
+rinda gan sadaļas, gan projekta kopsavilkumā parādās TIKAI, ja
+`discountRate !== 0` — lai UX projektiem bez atlaides paliktu identisks
+iepriekšējam (nav lieku rindu ar "0.00 €").
 
 ## Palaišana
 

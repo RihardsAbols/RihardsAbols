@@ -155,20 +155,32 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   summary.getCell(1, 1).font = HEADER_FONT;
   summary.getCell(1, 2).value = state.projectName;
 
-  summary.getCell(2, 1).value = "Virsizdevumu likme:";
-  summary.getCell(2, 2).value = state.overheadRate;
+  summary.getCell(2, 1).value = "Atlaides likme:";
+  summary.getCell(2, 2).value = state.discountRate;
   summary.getCell(2, 2).numFmt = PERCENT_FORMAT;
 
-  summary.getCell(3, 1).value = "Peļņas likme:";
-  summary.getCell(3, 2).value = state.profitRate;
+  summary.getCell(3, 1).value = "Virsizdevumu likme:";
+  summary.getCell(3, 2).value = state.overheadRate;
   summary.getCell(3, 2).numFmt = PERCENT_FORMAT;
 
-  summary.getCell(4, 1).value = "PVN likme:";
-  summary.getCell(4, 2).value = state.vatRate;
+  summary.getCell(4, 1).value = "Peļņas likme:";
+  summary.getCell(4, 2).value = state.profitRate;
   summary.getCell(4, 2).numFmt = PERCENT_FORMAT;
 
-  const tableHeaderRow = 6;
-  ["Sadaļa", "Tiešās izmaksas", "Virsizdevumi", "Peļņa", "Pavisam (bez PVN)"].forEach((label, i) => {
+  summary.getCell(5, 1).value = "PVN likme:";
+  summary.getCell(5, 2).value = state.vatRate;
+  summary.getCell(5, 2).numFmt = PERCENT_FORMAT;
+
+  const tableHeaderRow = 7;
+  [
+    "Sadaļa",
+    "Tiešās izmaksas",
+    "Atlaide",
+    "Tiešās izmaksas pēc atlaides",
+    "Virsizdevumi",
+    "Peļņa",
+    "Pavisam (bez PVN)",
+  ].forEach((label, i) => {
     const cell = summary.getCell(tableHeaderRow, i + 1);
     cell.value = label;
     cell.font = HEADER_FONT;
@@ -189,14 +201,16 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
       formula: `${quoteSheetName(sheetName)}!${colLetter(TAME_COLUMNS.totalAll)}${directTotalRow}`,
       result: sectionSummary.directTotal,
     };
-    summary.getCell(row, 3).value = { formula: `B${row}*$B$2`, result: sectionSummary.overhead };
-    summary.getCell(row, 4).value = { formula: `B${row}*$B$3`, result: sectionSummary.profit };
-    summary.getCell(row, 5).value = {
-      formula: `B${row}+C${row}+D${row}`,
+    summary.getCell(row, 3).value = { formula: `B${row}*$B$2`, result: sectionSummary.discountAmount };
+    summary.getCell(row, 4).value = { formula: `B${row}-C${row}`, result: sectionSummary.directTotalAfterDiscount };
+    summary.getCell(row, 5).value = { formula: `D${row}*$B$3`, result: sectionSummary.overhead };
+    summary.getCell(row, 6).value = { formula: `D${row}*$B$4`, result: sectionSummary.profit };
+    summary.getCell(row, 7).value = {
+      formula: `D${row}+E${row}+F${row}`,
       result: sectionSummary.totalWithMarkup,
     };
 
-    for (const col of [2, 3, 4, 5]) {
+    for (const col of [2, 3, 4, 5, 6, 7]) {
       summary.getCell(row, col).numFmt = MONEY_FORMAT;
     }
   });
@@ -206,8 +220,15 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   summary.getCell(totalsRow, 1).value = "KOPĀ";
   summary.getCell(totalsRow, 1).font = HEADER_FONT;
 
-  const totalsResults = [boqSummary.directTotal, boqSummary.overhead, boqSummary.profit, boqSummary.subtotal];
-  for (const col of [2, 3, 4, 5]) {
+  const totalsResults = [
+    boqSummary.directTotal,
+    boqSummary.discountAmount,
+    boqSummary.directTotalAfterDiscount,
+    boqSummary.overhead,
+    boqSummary.profit,
+    boqSummary.subtotal,
+  ];
+  for (const col of [2, 3, 4, 5, 6, 7]) {
     const cell = summary.getCell(totalsRow, col);
     if (state.sections.length > 0) {
       const letter = colLetter(col);
@@ -224,15 +245,15 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
 
   const vatRow = totalsRow + 1;
   summary.getCell(vatRow, 1).value = "PVN";
-  const vatCell = summary.getCell(vatRow, 5);
-  vatCell.value = { formula: `E${totalsRow}*$B$4`, result: boqSummary.vatAmount };
+  const vatCell = summary.getCell(vatRow, 7);
+  vatCell.value = { formula: `G${totalsRow}*$B$5`, result: boqSummary.vatAmount };
   vatCell.numFmt = MONEY_FORMAT;
 
   const grandTotalRow = vatRow + 1;
   summary.getCell(grandTotalRow, 1).value = "KOPĀ AR PVN";
   summary.getCell(grandTotalRow, 1).font = HEADER_FONT;
-  const grandTotalCell = summary.getCell(grandTotalRow, 5);
-  grandTotalCell.value = { formula: `E${totalsRow}+E${vatRow}`, result: boqSummary.total };
+  const grandTotalCell = summary.getCell(grandTotalRow, 7);
+  grandTotalCell.value = { formula: `G${totalsRow}+G${vatRow}`, result: boqSummary.total };
   grandTotalCell.numFmt = MONEY_FORMAT;
   grandTotalCell.font = HEADER_FONT;
 

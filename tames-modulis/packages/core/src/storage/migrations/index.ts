@@ -1,5 +1,6 @@
 import {
   CURRENT_SCHEMA_VERSION,
+  DEFAULT_DISCOUNT_RATE,
   DEFAULT_OVERHEAD_RATE,
   DEFAULT_PROFIT_RATE,
   DEFAULT_VAT_RATE,
@@ -30,6 +31,11 @@ const migrations: Record<number, Migration> = {
     sections: Array.isArray(data.sections)
       ? data.sections.map((section) => migrateSectionV2ToV3(section as Record<string, unknown>))
       : data.sections,
+  }),
+  // v3 had no discountRate field; default to no discount.
+  3: (data) => ({
+    ...data,
+    discountRate: typeof data.discountRate === "number" ? data.discountRate : DEFAULT_DISCOUNT_RATE,
   }),
 };
 

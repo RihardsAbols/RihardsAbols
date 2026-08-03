@@ -586,13 +586,131 @@ labošanas (mērvienība + daudzums aizpildīti) imports strādāja pareizi.
   atcelšana, pārrakstīšanas semantika, likmju/nosaukuma saglabāšana,
   persistence pēc saglabāšanas, code-splitting.
 
+## Sesija 15: Projekta līmeņa atlaide (diskonts) — ✅ pabeigts
+
+**Uzdevums:** kandidāts #1 no Sesijas 14 atlikušā saraksta — atlaide/diskonts.
+
+**Lēmums (apstiprināts ar lietotāju, jautāts tieši pirms ieviešanas):**
+- **Līmenis:** projekta līmenī, viena likme (`discountRate`) visam
+  projektam — nevis pa sadaļām vai pozīcijām. Simetriski ar
+  `vatRate`/`overheadRate`/`profitRate`, kas jau ir projekta līmenī.
+- **Aprēķina secība:** atlaide atskaitīta NO TIEŠAJĀM IZMAKSĀM, PIRMS
+  virsizdevumiem/peļņas — nevis no gala summas pēc uzcenojuma vai pēc PVN.
+  T.i. `directTotalAfterDiscount = directTotal - directTotal*discountRate`,
+  un tieši no tā rēķina virsizdevumus/peļņu, nevis no `directTotal`.
+- **PVN:** paliek viena likme projektam, dažādu PVN likmju atbalsts (piem.
+  pa pozīcijām) NAV pievienots šoreiz — lietotājs apstiprināja, ka ar
+  diskontu vien pietiek.
+
+**Implementēts:**
+- `src/models/boq.ts` — jauns `discountRate: number` lauks `BoqState`,
+  `DEFAULT_DISCOUNT_RATE = 0` (bez atlaides pēc noklusējuma),
+  `CURRENT_SCHEMA_VERSION` `3 -> 4`.
+- `src/storage/migrations/index.ts` — jauna `3: (data) => ...` migrācija,
+  kas iztrūkstošam/nepareiza tipa `discountRate` uzstāda
+  `DEFAULT_DISCOUNT_RATE`, tāpat kā jau esošās v1/v2 migrācijas citiem
+  laukiem. Jau esošs `discountRate` (piem., ja lietotājs to jau bija
+  iestatījis pirms migrācijas koda parādīšanās) netiek pārrakstīts.
+- `src/calculations/boq.ts` — `summarizeBoq`: katrai sadaļai un projektam
+  kopā aprēķina `discountAmount` (`directTotal * discountRate`) un
+  `directTotalAfterDiscount` (`directTotal - discountAmount`); virsizdevumi
+  un peļņa tagad rēķināti no `directTotalAfterDiscount`, nevis no
+  neskartā `directTotal`. Pats `directTotal` lauks (neskarts, pirms
+  atlaides) **netika mainīts** — tas joprojām ir tiešā pārbaudes atsauce
+  pret avota tāmes "Tāmes izmaksas" šūnu (skat. Sesija 12 DEM lapas
+  pārbaudi), un mainīt tā nozīmi būtu salauzis šo pārbaudes ķēdi klusi.
+  Noapaļošanas princips (summē nenoapaļotus starprezultātus, noapaļo tikai
+  beigās) saglabāts arī atlaides aprēķinam.
+- `src/excel/export.ts` — `KOPSAVILKUMS` lapā pievienota "Atlaides likme:"
+  rinda (2. rinda, virs virsizdevumu/peļņas/PVN likmēm, kas nobīdītas par
+  vienu rindu uz leju) un divas jaunas kolonnas kopsavilkuma tabulā starp
+  "Tiešās izmaksas" un "Virsizdevumi": "Atlaide" un "Tiešās izmaksas pēc
+  atlaides" — ar formulām (nevis tikai gala vērtībām), tāpat kā pārējās
+  šūnas šajā failā. Imports (`import.ts`) **nemainījās** — tas jau iepriekš
+  nelasīja likmes (`vatRate`/`overheadRate`/`profitRate`) atpakaļ no
+  `KOPSAVILKUMS` lapas (tikai sadaļas/pozīcijas), tāpēc `discountRate` arī
+  netiek importēts — konsekventi ar jau dokumentēto "Excel imports/eksports
+  ir daļēji zaudējošs" lēmumu.
+- `packages/web/src/components/ProjectEditor.tsx` — jauns "Atlaide (%)"
+  ievades lauks `.rates` blokā (pirms "Virsizdevumi", atbilstoši aprēķina
+  secībai), un jauna "Atlaide: ..." rinda gan sadaļas, gan projekta
+  kopsavilkumā — **redzama tikai, ja `discountRate !== 0`**, lai nemainītu
+  UX projektiem bez atlaides (noklusējuma gadījums paliek identisks
+  iepriekšējam).
+
+**Testi:**
+- `test/calculations.test.ts` — jauns tests "subtracts the discount from
+  direct costs before computing overhead/profit" (10% atlaide, pārbauda
+  gan sadaļas, gan projekta līmeņa `discountAmount`/
+  `directTotalAfterDiscount`/`overhead`/`profit`/`subtotal`/`vatAmount`/
+  `total`), un esošie testi papildināti ar jaunajiem laukiem
+  (`discountAmount: 0`, `directTotalAfterDiscount` = `directTotal`, kad
+  atlaides nav).
+- `test/storage.test.ts` — jauns migrācijas tests "preserves an
+  already-present discountRate instead of overwriting it during
+  migration" (v3 dati ar `discountRate: 0.07`).
+- Kopā **41/41 core testi zaļi** (39 + 2 jauni; `test/excel.test.ts`
+  netika mainīts, jo tā round-trip pārbaudes salīdzina tikai sadaļu/
+  pozīciju datus, ne `KOPSAVILKUMS` lapas fiksētās rindas/kolonnas, un
+  noklusējuma `discountRate=0` abās pusēs jau sakrīt).
+
+**Manuāla pārbaude (Playwright, reāls Chromium, headless jauna režīmā —
+skat. zemāk piezīmi):**
+- Izveidots jauns projekts, pievienota sadaļa ar vienu pozīciju
+  (100 gab. × (5+3+2) €/vienība = 1000 € tiešās izmaksas).
+- Ar `discountRate=0`: "Atlaide" rinda NAV redzama nedz sadaļas, nedz
+  projekta kopsavilkumā (esošais UX nemainīts); Pavisam (bez PVN) =
+  1170.00 €, KOPĀ AR PVN = 1415.70 € (noklusējuma likmes: virsizdevumi
+  12%, peļņa 5%, PVN 21%).
+- Iestatot "Atlaide (%)" = 10: sadaļas kopsavilkumā parādās "Atlaide:
+  100.00 €", projektā "Atlaide: -100.00 €"; Virsizdevumi pārrēķināti uz
+  108.00 € (900×0.12), Peļņa uz 45.00 € (900×0.05), Pavisam (bez PVN) uz
+  1053.00 €, PVN uz 221.13 €, KOPĀ AR PVN uz 1274.13 € — visi skaitļi
+  sakrīt ar `summarizeBoq` formulu ar roku.
+- Pēc "Saglabāt" + lapas pārlādes (atkārtoti izvēloties projektu, jo
+  atlasītais projekts ir tikai React stāvoklī, ne persistents — esoša
+  uzvedība, nemainīta) `discountRate=10` un visi atvasinātie skaitļi
+  saglabājas nemainīgi.
+- Atiestatot atlaidi atpakaļ uz 0: "Atlaide" rinda atkal pazūd.
+- Excel eksports (`exportBoqToWorkbook`) pārbaudīts tieši (bez UI, ar
+  `tsx` skriptu) tam pašam datu kopumam: `KOPSAVILKUMS` lapā 2. rindā
+  "Atlaides likme: 10%", tabulas rindā redzamas visas jaunās kolonnas
+  ar pareizām formulu rezultāta vērtībām (1000, 100, 900, 108, 45,
+  1053), KOPĀ rinda sakrīt, PVN rinda 221.13 — konsekventi ar UI un
+  `summarizeBoq`.
+- Vienīgā konsoles kļūda visas plūsmas laikā bija `favicon.ico` 404
+  (jau zināms, nekritisks, dokumentēts kā atsevišķs "Favicon" kandidāts
+  zemāk) — nesaistīts ar šo izmaiņu.
+- **Piezīme par pārbaudes rīku:** `chromium-cli` nebija pieejams šajā vidē;
+  izmantots tieši `playwright` npm pakotne (instalēta pagaidu scratchpad
+  direktorijā, ne repo atkarībās) ar iepriekš instalēto Chromium
+  (`/opt/pw-browsers/chromium-1194`). Vajadzēja `--headless=new` karogu,
+  jo šī playwright/Chromium kombinācija pēc noklusējuma mēģināja izmantot
+  noņemto "old headless" režīmu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 41/41 testi zaļi (39 + 2 jauni šai funkcijai).
+- ✅ Typecheck tīrs abās pakotnēs (`npx tsc --noEmit` core, `npm run
+  build:web` web, kas ietver typecheck).
+- ✅ `vite build` veiksmīgs; bundle izmēri nemainīgi (galvenais ~158KB,
+  `exceljs` chunk ~946KB atsevišķi — atlaides lauks nepievienoja jaunas
+  atkarības).
+- ✅ Aprēķina pareizība manuāli pārbaudīta ar konkrētiem skaitļiem UI
+  (Playwright) UN Excel eksportā, abi sakrīt savā starpā un ar
+  `summarizeBoq` formulu ar roku.
+- ✅ Migrācija (v3 bez `discountRate` -> v4 ar noklusējumu 0; v3 ar jau
+  iestatītu `discountRate` -> saglabāts) testēta.
+- ✅ UX regresija pārbaudīta: `discountRate=0` gadījumā UI izskatās
+  identiski iepriekšējam (nav redzamas "Atlaide" rindas).
+
 ## 🔜 NĀKAMAIS UZDEVUMS
 
 Nav vienota lēmuma, kas ir nākamais solis — jāapstiprina ar lietotāju pirms
 sākšanas. Iespējamie kandidāti:
 
-1. **Diskonti/atlaides vai sarežģītāka PVN loģika** (piem. dažādas PVN
-   likmes pa pozīcijām), ja tas ir reāls prasību lauks.
-2. **Favicon** — joprojām neaizskarts, nekritiski.
+1. **Favicon** — joprojām neaizskarts, nekritiski.
+2. **Sarežģītāka PVN loģika** (piem. dažādas PVN likmes pa pozīcijām/
+   sadaļām), ja tas izrādās reāls prasību lauks — apzināti atlikts
+   Sesijā 15, kad lietotājs apstiprināja, ka ar diskontu vien pietiek.
 
 Pirms jebkura no šiem — apstiprināt ar lietotāju, kurš tieši ir prioritārs.

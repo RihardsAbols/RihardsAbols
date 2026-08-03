@@ -220,6 +220,15 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
 
       <div className="rates">
         <label>
+          Atlaide (%)
+          <input
+            type="number"
+            step="0.1"
+            value={state.discountRate * 100}
+            onChange={(e) => update((s) => ({ ...s, discountRate: Number(e.target.value) / 100 }))}
+          />
+        </label>
+        <label>
           Virsizdevumi (%)
           <input
             type="number"
@@ -269,8 +278,10 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
             <button onClick={() => addItem(sectionIndex)}>+ Pozīcija</button>
 
             <div className="section-summary">
-              Tiešās izmaksas: {eur(sectionSummary.directTotal)} · Virsizdevumi: {eur(sectionSummary.overhead)} · Peļņa:{" "}
-              {eur(sectionSummary.profit)} · Pavisam: {eur(sectionSummary.totalWithMarkup)}
+              Tiešās izmaksas: {eur(sectionSummary.directTotal)}
+              {state.discountRate !== 0 && <> · Atlaide: {eur(sectionSummary.discountAmount)}</>} · Virsizdevumi:{" "}
+              {eur(sectionSummary.overhead)} · Peļņa: {eur(sectionSummary.profit)} · Pavisam:{" "}
+              {eur(sectionSummary.totalWithMarkup)}
             </div>
           </div>
         );
@@ -280,6 +291,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
 
       <div className="project-summary">
         <p>Tiešās izmaksas: {eur(summary.directTotal)}</p>
+        {state.discountRate !== 0 && <p>Atlaide: -{eur(summary.discountAmount)}</p>}
         <p>Virsizdevumi: {eur(summary.overhead)}</p>
         <p>Peļņa: {eur(summary.profit)}</p>
         <p>Pavisam (bez PVN): {eur(summary.subtotal)}</p>

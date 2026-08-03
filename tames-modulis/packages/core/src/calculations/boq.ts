@@ -51,22 +51,31 @@ export interface BoqSectionSummary {
   laborTotal: number;
   materialsTotal: number;
   mechanismsTotal: number;
-  /** Tiešās izmaksas (bez virsizdevumiem/peļņas/PVN). */
+  /** Tiešās izmaksas (bez atlaides/virsizdevumiem/peļņas/PVN). */
   directTotal: number;
+  /** Šīs sadaļas daļa no projekta atlaides (proporcionāli tās directTotal). */
+  discountAmount: number;
+  /** Tiešās izmaksas mīnus atlaide - bāze virsizdevumu/peļņas aprēķinam. */
+  directTotalAfterDiscount: number;
   overhead: number;
   profit: number;
-  /** Tiešās izmaksas + virsizdevumi + peļņa (bez PVN). */
+  /** Tiešās izmaksas pēc atlaides + virsizdevumi + peļņa (bez PVN). */
   totalWithMarkup: number;
 }
 
 export interface BoqSummary {
   sections: BoqSectionSummary[];
+  /** Tiešās izmaksas (bez atlaides/virsizdevumiem/peļņas/PVN). */
   directTotal: number;
+  discountRate: number;
+  discountAmount: number;
+  /** Tiešās izmaksas mīnus atlaide - bāze virsizdevumu/peļņas aprēķinam. */
+  directTotalAfterDiscount: number;
   overheadRate: number;
   overhead: number;
   profitRate: number;
   profit: number;
-  /** Pavisam pirms PVN (tiešās izmaksas + virsizdevumi + peļņa). */
+  /** Pavisam pirms PVN (tiešās izmaksas pēc atlaides + virsizdevumi + peļņa). */
   subtotal: number;
   vatRate: number;
   vatAmount: number;
@@ -80,37 +89,50 @@ export function summarizeBoq(state: BoqState): BoqSummary {
   // rounding drift compound across sections/items.
   const rawSections = state.sections.map((section) => {
     const raw = sumSectionRawCosts(section);
-    const overhead = raw.directTotal * state.overheadRate;
-    const profit = raw.directTotal * state.profitRate;
+    const discountAmount = raw.directTotal * state.discountRate;
+    const directTotalAfterDiscount = raw.directTotal - discountAmount;
+    const overhead = directTotalAfterDiscount * state.overheadRate;
+    const profit = directTotalAfterDiscount * state.profitRate;
     return {
       id: section.id,
       name: section.name,
       raw,
+      discountAmount,
+      directTotalAfterDiscount,
       overhead,
       profit,
-      totalWithMarkup: raw.directTotal + overhead + profit,
+      totalWithMarkup: directTotalAfterDiscount + overhead + profit,
     };
   });
 
   const rawDirectTotal = rawSections.reduce((sum, s) => sum + s.raw.directTotal, 0);
-  const rawOverhead = rawDirectTotal * state.overheadRate;
-  const rawProfit = rawDirectTotal * state.profitRate;
-  const rawSubtotal = rawDirectTotal + rawOverhead + rawProfit;
+  const rawDiscountAmount = rawDirectTotal * state.discountRate;
+  const rawDirectTotalAfterDiscount = rawDirectTotal - rawDiscountAmount;
+  const rawOverhead = rawDirectTotalAfterDiscount * state.overheadRate;
+  const rawProfit = rawDirectTotalAfterDiscount * state.profitRate;
+  const rawSubtotal = rawDirectTotalAfterDiscount + rawOverhead + rawProfit;
   const rawVatAmount = rawSubtotal * state.vatRate;
 
   return {
-    sections: rawSections.map(({ id, name, raw, overhead, profit, totalWithMarkup }) => ({
-      id,
-      name,
-      laborTotal: round2(raw.laborTotal),
-      materialsTotal: round2(raw.materialsTotal),
-      mechanismsTotal: round2(raw.mechanismsTotal),
-      directTotal: round2(raw.directTotal),
-      overhead: round2(overhead),
-      profit: round2(profit),
-      totalWithMarkup: round2(totalWithMarkup),
-    })),
+    sections: rawSections.map(
+      ({ id, name, raw, discountAmount, directTotalAfterDiscount, overhead, profit, totalWithMarkup }) => ({
+        id,
+        name,
+        laborTotal: round2(raw.laborTotal),
+        materialsTotal: round2(raw.materialsTotal),
+        mechanismsTotal: round2(raw.mechanismsTotal),
+        directTotal: round2(raw.directTotal),
+        discountAmount: round2(discountAmount),
+        directTotalAfterDiscount: round2(directTotalAfterDiscount),
+        overhead: round2(overhead),
+        profit: round2(profit),
+        totalWithMarkup: round2(totalWithMarkup),
+      }),
+    ),
     directTotal: round2(rawDirectTotal),
+    discountRate: state.discountRate,
+    discountAmount: round2(rawDiscountAmount),
+    directTotalAfterDiscount: round2(rawDirectTotalAfterDiscount),
     overheadRate: state.overheadRate,
     overhead: round2(rawOverhead),
     profitRate: state.profitRate,
