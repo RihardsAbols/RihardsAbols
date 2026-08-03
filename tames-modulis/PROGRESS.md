@@ -1176,13 +1176,13 @@ saglabātais akts vēsturē satur pareizo kopējo summu (30). Core testi
 (82/82), typecheck un `vite build` (abi tīri) palaisti pēc šī papildinājuma
 bez izmaiņām nepieciešamības.
 
-## Sesija 20: Izpildes akti Excel eksportā — ✅ pabeigts (daļēji, skat. zemāk)
+## Sesija 20: Izpildes akti Excel eksportā + reāla VELVE faila pārbaude — ✅ pabeigts
 
-**Uzdevums:** kandidāts #1 no Sesijas 19 atlikušā saraksta — lietotājs
-apstiprināja pirms ieviešanas (jautāts tieši, skat. zemāk abi lēmumi).
-Lietotājs arī pieprasīja, lai šajā pašā sesijā tiktu pārbaudīta pilna VO +
-izpildes aktu plūsma ar reālo 53-lapu VELVE failu (kandidāts #5) — tas VĒL
-NAV izdarīts (fails jāsaņem no jauna, skat. zemāk atjaunināto sarakstu).
+**Uzdevums:** kandidāts #1 no Sesijas 19 atlikušā saraksta (Izpildes akti
+Excel eksportā) UN kandidāts #5 (pilna VO + izpildes aktu plūsma pret reālo
+53-lapu VELVE failu) — abus lietotājs apstiprināja tieši sesijas sākumā, pēc
+kandidātu saraksta izklāsta (skat. CLAUDE.md/PROGRESS.md prasību neko
+neizvēlēties bez jautāšanas).
 
 **Lēmumi (apstiprināti ar lietotāju, jautāti tieši pirms ieviešanas):**
 - **Eksporta apjoms:** ABAS daļas — sadaļu lapām jaunas "Izpildīts"/
@@ -1200,33 +1200,55 @@ jaunas "Izpildīts"/"Atlikums" kolonnas sadaļu lapās (`EXECUTION_COLUMNS`,
 stingri aiz VO kolonnām), jauna "IZPILDES AKTI" darblapa
 (`writeExecutionRecordsSheet`).
 
-**Manuāli pārbaudīts** ar pagaidu vitest skriptu, kas rakstīja reālu
-`.xlsx` uz disku (izdzēsts pēc lietošanas) un pārbaudīts ar `openpyxl` —
-divi izpildes akti pret VO-koriģētu sadaļu, visi skaitļi (kumulatīvais
-izpildītais, atlikums, akta EUR vērtība, pārskata tabula) sakrita ar roku
-rēķinātu. Skat. CLAUDE.md pilnu pārbaudes aprakstu.
+**Manuāli pārbaudīts (sintētisks projekts)** ar pagaidu vitest skriptu, kas
+rakstīja reālu `.xlsx` uz disku (izdzēsts pēc lietošanas) un pārbaudīts ar
+`openpyxl` — divi izpildes akti pret VO-koriģētu sadaļu, visi skaitļi
+(kumulatīvais izpildītais, atlikums, akta EUR vērtība, pārskata tabula)
+sakrita ar roku rēķinātu.
+
+**Manuāli pārbaudīts arī pret REĀLO 53-lapu/12876 pozīciju VELVE failu**
+(tas pats fails, kas Sesijās 12/13/17 — lietotājs to pievienoja no jauna
+šai sesijai). Pagaidu vitest skripts (izdzēsts pēc lietošanas, tāpat kā
+iepriekšējo sesiju konvencija): imports -> bāzes iesaldēšana -> viena VO ar
+VISIEM izmaiņu veidiem vienlaicīgi (daudzuma korekcija +10 reālai pozīcijai,
+esošas pozīcijas izslēgšana, jauna sadaļa, jauna pozīcija tajā) -> divi
+izpildes akti (janvāris/februāris) pret VO-koriģēto stāvokli -> Excel
+eksports -> `openpyxl` pārbaude uz ģenerētā faila:
+- Imports: 47 sadaļas, 12876 pozīcijas, ~8.4s. `deriveCurrentSections`: ~2ms
+  (nenozīmīgs pat 12876 pozīcijām). Eksports: ~4.5s, 1.6MB fails. Kopā pilna
+  plūsma (imports+VO+akti+eksports, bez UI renderēšanas) ~13s — atbilst jau
+  zināmajam Sesijas 12 raksturlielumam (imports/eksports paši ir dārgākā
+  daļa, ne VO/izpildes aprēķini).
+- **Rezultāts: 51 darblapa** (1 KOPSAVILKUMS + 47 reālās sadaļas + 1 jaunā
+  VO sadaļa + 1 IZMAIŅAS + 1 IZPILDES AKTI) — pareizi.
+- Reālas pozīcijas (DEM lapas 1. rinda) daudzums 600 (590 bāze + 10 VO),
+  vienības izmaksa 21.87 (10.14+0.75+10.98) — Izpildīts=300, Atlikums=300
+  (summa = 600, pareizi); reģistra akta vērtība 300×21.87=6561€ sakrita ar
+  "IZPILDES AKTI" pārskata tabulu.
+- Izslēgtā reālā pozīcija (DEM 2. rinda): Kopā-kolonnas pareizi nullētas
+  (izslēgšanas efekts), bet Daudzums/Bāzes daudzums/Atlikums palika redzami
+  atsaucei (293/293/293) — apstiprina, ka izslēgšana un izpildes uzskaite
+  ir neatkarīgas, korekti mijiedarbojas.
+- Jaunā VO sadaļa/pozīcija: "JAUNS"/Delta=5 (VO kolonnas) UN
+  Izpildīts=2/Atlikums=3 (izpildes kolonnas) parādījās PAREIZI VIENĀ un tajā
+  pašā lapā/rindā — apstiprina, ka abas kolonnu grupas (VO un izpilde)
+  strādā kopā arī jaunizveidotai (ne tikai bāzes) pozīcijai.
+- Nekādu kļūdu/avāriju visā plūsmā, neskatoties uz pilnu reālo datu apjomu.
 
 **Definition of Done — pārbaudīts:**
 - ✅ Core: 90/90 testi zaļi (82 + 8 jauni).
 - ✅ Typecheck tīrs abās pakotnēs (`npx tsc --noEmit` core un web).
-- ✅ Manuāli pārbaudīts reāls ģenerēts `.xlsx` fails ar `openpyxl`.
-- ⚠️ **NAV pārbaudīts ar reālo 53-lapu/12876 pozīciju VELVE failu** — lietotājs
-  to pieprasīja šai sesijai, bet failu vajag saņemt no jauna (netika
-  pievienots sesijas laikā). Atlikts kā daļa no NĀKAMĀ SOĻA saraksta zemāk.
+- ✅ Manuāli pārbaudīts reāls ģenerēts `.xlsx` fails ar `openpyxl`, gan
+  sintētiskam, gan REĀLAM 53-lapu/12876 pozīciju VELVE failam.
+- ✅ Reāla faila pilna VO + izpildes aktu plūsma pārbaudīta bez kļūdām, ar
+  konkrētiem laika mērījumiem (imports ~8.4s, eksports ~4.5s).
 
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Sesijā 20 tika izlemts strādāt pie kandidāta #1 (Izpildes akti Excel
-eksportā, tagad pabeigts) UN lietotājs apstiprināja, ka arī reāla VELVE
-faila pārbaude (bijušais kandidāts #5) vajadzīga šai pašai sesijai — tas
-VĒL NAV izdarīts, jo fails nebija pieejams vidē. Tas ir tiešs, apstiprināts
-nākamais solis (nevis kandidāts, par ko vēlreiz jājautā) — vajag lietotāju
-PAJAUTĀT/atgādināt pievienot to pašu 53-lapu/12876 pozīciju failu, kas tika
-izmantots Sesijās 12/13/17, un tad palaist pilnu VO + izpildes aktu ciklu
-(bāzes iesaldēšana -> VO -> akti -> Excel eksports, ieskaitot Sesijas 20
-jaunās kolonnas/lapu) pret to.
-
-Pēc tam atlikušie kandidāti (NAV apstiprināts uzdevums, jājautā lietotājam):
+Abi Sesijā 20 apstiprinātie uzdevumi (Izpildes akti Excel eksportā, reāla
+VELVE faila pārbaude) ir pabeigti. Atlikušie kandidāti no iepriekšējā
+saraksta (NAV apstiprināts uzdevums, jājautā lietotājam nākamās sesijas
+sākumā):
 
 1. **Izpildes aktu Excel imports** — Sesijā 19 apzināti atlikts (manuāla
    ievade izvēlēta pirmajai versijai). Vai reāla lietošana rāda, ka manuāla
@@ -1243,7 +1265,6 @@ Pēc tam atlikušie kandidāti (NAV apstiprināts uzdevums, jājautā lietotāja
    tikai vienu pozīciju uzreiz VO formā?
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-20) un CLAUDE.md pilnībā. Vispirms pabeigt reālā VELVE faila
-pārbaudi (apstiprināts solis, skat. augšā), tad PAJAUTĀT lietotājam, pie
-kura no augstāk numurētajiem kandidātiem (ja kāda vispār) strādāt tālāk —
-nevis pieņemt, ka viens no tiem ir automātiski nākamais uzdevums.
+Sesijas 18-20) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, pie kura no
+augstāk numurētajiem kandidātiem (ja kāda vispār) strādāt tālāk — nevis
+pieņemt, ka viens no tiem ir automātiski nākamais uzdevums.

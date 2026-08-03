@@ -791,28 +791,42 @@ Bez izpildes akta datiem (`executionRecords.length === 0`) eksports paliek
 pilnībā nemainīgs (backward compatible), tāpat kā VO eksporta izmaiņas
 Sesijā 18.
 
-**Manuāli pārbaudīts** (pagaidu vitest skripts, kas rakstīja reālu `.xlsx`
-uz disku, izdzēsts pēc lietošanas — tāpat kā Sesijas 14 testa skripta
-piezīme): divi izpildes akti (janvāris: pozīcija "a" 40 vienības; februāris:
-"a" +50, "b" 50) pret VO-koriģētu sadaļu (pozīcija "a" 100 -> 130 caur VO).
-Pārbaudīts ar `openpyxl` (`data_only=True`): sadaļas lapā pozīcijai "a"
-Izpildīts=90 (40+50 kumulatīvi), Atlikums=40 (130-90); pozīcijai "b"
-Izpildīts=50, Atlikums=0. "IZPILDES AKTI" lapā reģistra rindas 400€ (janvāra
-akts, tikai "a": 40×10) un 700€ (februāra akts: "a" 50×10=500 +
-"b" 50×4=200); pārskata tabulā abas pozīcijas ar pareizu pašreizējo/
+**Manuāli pārbaudīts (sintētisks projekts)** (pagaidu vitest skripts, kas
+rakstīja reālu `.xlsx` uz disku, izdzēsts pēc lietošanas — tāpat kā Sesijas
+14 testa skripta piezīme): divi izpildes akti (janvāris: pozīcija "a" 40
+vienības; februāris: "a" +50, "b" 50) pret VO-koriģētu sadaļu (pozīcija "a"
+100 -> 130 caur VO). Pārbaudīts ar `openpyxl` (`data_only=True`): sadaļas
+lapā pozīcijai "a" Izpildīts=90 (40+50 kumulatīvi), Atlikums=40 (130-90);
+pozīcijai "b" Izpildīts=50, Atlikums=0. "IZPILDES AKTI" lapā reģistra rindas
+400€ (janvāra akts, tikai "a": 40×10) un 700€ (februāra akts: "a" 50×10=500
++ "b" 50×4=200); pārskata tabulā abas pozīcijas ar pareizu pašreizējo/
 izpildīto/atlikuma/vērtības kolonnu. Visi skaitļi sakrita ar roku rēķinātu.
+
+**Manuāli pārbaudīts arī pret REĀLO 53-lapu/12876 pozīciju VELVE failu**
+(lietotājs to pievienoja pēc pieprasījuma) — pagaidu vitest skripts
+(izdzēsts pēc lietošanas): imports (47 sadaļas, 12876 pozīcijas, ~8.4s) ->
+bāzes iesaldēšana -> viena VO ar VISIEM izmaiņu veidiem vienlaicīgi
+(daudzuma korekcija reālai pozīcijai, esošas pozīcijas izslēgšana, jauna
+sadaļa, jauna pozīcija tajā) -> divi izpildes akti pret VO-koriģēto
+stāvokli -> Excel eksports (~4.5s, 1.6MB fails, kopā pilna plūsma bez UI
+renderēšanas ~13s) -> `openpyxl` pārbaude. Rezultāts: 51 darblapa (1
+KOPSAVILKUMS + 47 reālās sadaļas + 1 jaunā VO sadaļa + 1 IZMAIŅAS + 1
+IZPILDES AKTI); reālas pozīcijas Izpildīts/Atlikums summējās pareizi ar
+pašreizējo daudzumu, reģistra akta EUR vērtība sakrita ar pārskata tabulu,
+izslēgtai pozīcijai Kopā-kolonnas pareizi nullētas, bet
+daudzums/atlikums palika redzami; jaunajai VO sadaļai/pozīcijai VO kolonnas
+("JAUNS"/Delta) UN izpildes kolonnas (Izpildīts/Atlikums) parādījās pareizi
+KOPĀ vienā rindā. Nekādu kļūdu visā plūsmā.
 
 **Definition of Done — pārbaudīts:**
 - ✅ Core: 90/90 testi zaļi (82 + 8 jauni: 6 `computeExecutionRecordValue`/
   `computeExecutionOverview` unit testi, 2 Excel eksporta testi ar/bez
   izpildes akta datiem).
 - ✅ Typecheck tīrs abās pakotnēs.
-- ✅ Manuāli pārbaudīts reāls ģenerēts `.xlsx` fails ar `openpyxl`
-  (sadaļu kolonnas UN "IZPILDES AKTI" lapa), ne tikai `exportBoqToWorkbook`
-  tiešā unit testā.
-- ⚠️ **Nav vēl pārbaudīts ar reālo 53-lapu/12876 pozīciju VELVE failu** —
-  lietotājs apstiprināja, ka arī to vajag šajā sesijā, bet fails vēl jāsaņem
-  no jauna (skat. PROGRESS.md Sesija 20).
+- ✅ Manuāli pārbaudīts reāls ģenerēts `.xlsx` fails ar `openpyxl`, gan
+  sintētiskam projektam, gan REĀLAM 53-lapu/12876 pozīciju VELVE failam.
+- ✅ Reāla faila pilna VO + izpildes aktu plūsma pārbaudīta bez kļūdām, ar
+  konkrētiem laika mērījumiem.
 
 ### Favicon
 
