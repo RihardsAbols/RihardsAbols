@@ -1,6 +1,8 @@
 import ExcelJS from "exceljs";
 import { calculateItemCosts, summarizeBoq } from "../calculations/boq.js";
 import type { BoqSection, BoqState } from "../models/boq.js";
+import type { VariationOrder } from "../models/variationOrder.js";
+import { computeVariationOrderDirectTotalImpact, deriveCurrentSections, diffAgainstBaseline } from "../variationOrders/deriveCurrentState.js";
 import { colLetter } from "./cellValue.js";
 import { TAME_COLUMNS } from "./columns.js";
 
@@ -65,6 +67,25 @@ const COLUMN_WIDTHS: Record<number, number> = {
 };
 
 const SUMMARY_COLUMN_WIDTHS = [32, 16, 14, 18, 14, 14, 18];
+
+// Extra columns appended AFTER the normal section-sheet columns (TAME_COLUMNS
+// ends at 16), only written when the project has an approved baseline (see
+// BoqState.baselineApprovedAt) - showing what a pozīcija's quantity was in
+// the frozen bāze vs. the current (bāze + apstiprinātās VO) quantity being
+// exported. Placed strictly after the fixed TAME_COLUMNS layout so
+// re-importing an exported file (which locates columns by header text, see
+// headerDetection.ts) is unaffected either way.
+const VARIATION_COLUMNS = {
+  spacer: TAME_COLUMNS.totalAll + 1,
+  baselineQuantity: TAME_COLUMNS.totalAll + 2,
+  quantityDelta: TAME_COLUMNS.totalAll + 3,
+} as const;
+
+const VARIATION_COLUMN_WIDTHS: Record<number, number> = {
+  [VARIATION_COLUMNS.spacer]: 3,
+  [VARIATION_COLUMNS.baselineQuantity]: 13,
+  [VARIATION_COLUMNS.quantityDelta]: 11,
+};
 
 /**
  * Writes the project-level header block (Projekts, Būvuzņēmēja/Pasūtītāja
@@ -149,12 +170,31 @@ function writeSignatureBlock(
   return startRow + lines.length - 1;
 }
 
-/** Writes one section as a worksheet and returns the row holding its "Tiešās izmaksas" total. */
-function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, section: BoqSection, state: BoqState): number {
+/**
+ * Writes one section as a worksheet and returns the row holding its "Tiešās
+ * izmaksas" total. `section` is the CURRENT (bāze + apstiprinātās VO, see
+ * deriveCurrentSections) version being rendered; `baselineSection` is the
+ * frozen bāze counterpart used ONLY for the "Bāzes daudzums"/"Delta" columns
+ * - `null` when the project has no approved baseline yet (draft, no VO
+ * feature in use), in which case those columns are omitted entirely and the
+ * sheet looks exactly like before this feature existed.
+ */
+function writeSectionSheet(
+  workbook: ExcelJS.Workbook,
+  sheetName: string,
+  section: BoqSection,
+  state: BoqState,
+  baselineSection: BoqSection | null,
+): number {
   const sheet = workbook.addWorksheet(sheetName);
 
   for (const [col, width] of Object.entries(COLUMN_WIDTHS)) {
     sheet.getColumn(Number(col)).width = width;
+  }
+  if (baselineSection) {
+    for (const [col, width] of Object.entries(VARIATION_COLUMN_WIDTHS)) {
+      sheet.getColumn(Number(col)).width = width;
+    }
   }
 
   const headerLines = writeProjectHeaderBlock(
@@ -193,7 +233,14 @@ function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, sectio
     cell.value = label;
     cell.font = HEADER_FONT;
   }
+  if (baselineSection) {
+    sheet.getCell(headerRow, VARIATION_COLUMNS.baselineQuantity).value = "Bāzes daudzums";
+    sheet.getCell(headerRow, VARIATION_COLUMNS.baselineQuantity).font = HEADER_FONT;
+    sheet.getCell(headerRow, VARIATION_COLUMNS.quantityDelta).value = "Delta";
+    sheet.getCell(headerRow, VARIATION_COLUMNS.quantityDelta).font = HEADER_FONT;
+  }
 
+  const baselineItemsById = baselineSection ? new Map(baselineSection.items.map((item) => [item.id, item])) : null;
   const firstDataRow = headerRow + 1;
   const L = colLetter(TAME_COLUMNS.unitLabor);
   const M = colLetter(TAME_COLUMNS.unitMaterials);
@@ -213,10 +260,36 @@ function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, sectio
     const nameCell = sheet.getCell(row, TAME_COLUMNS.name);
     nameCell.value = item.description;
     nameCell.alignment = { wrapText: true, vertical: "top" };
+    if (item.excluded) {
+      // Izslēgta pozīcija (skat. BoqItem.excluded) - vizuāli marķēta ar
+      // pārsvītrojumu, NEVIS teksta piedēkli aprakstā, lai atkārtots imports
+      // (kas lasa "Būvdarbu nosaukums" burtiski, skat. headerDetection.ts)
+      // nesabojātu aprakstu.
+      nameCell.font = { ...nameCell.font, strike: true };
+    }
     sheet.getCell(row, TAME_COLUMNS.unit).value = item.unit;
     const qtyCell = sheet.getCell(row, TAME_COLUMNS.quantity);
     qtyCell.value = item.quantity;
     qtyCell.numFmt = QUANTITY_FORMAT;
+    if (item.excluded) {
+      qtyCell.font = { ...qtyCell.font, strike: true };
+    }
+
+    if (baselineItemsById) {
+      const baselineItem = baselineItemsById.get(item.id) ?? null;
+      const baseQtyCell = sheet.getCell(row, VARIATION_COLUMNS.baselineQuantity);
+      const deltaCell = sheet.getCell(row, VARIATION_COLUMNS.quantityDelta);
+      if (baselineItem) {
+        baseQtyCell.value = baselineItem.quantity;
+        baseQtyCell.numFmt = QUANTITY_FORMAT;
+        deltaCell.value = item.quantity - baselineItem.quantity;
+        deltaCell.numFmt = QUANTITY_FORMAT;
+      } else {
+        baseQtyCell.value = "JAUNS";
+        deltaCell.value = item.quantity;
+        deltaCell.numFmt = QUANTITY_FORMAT;
+      }
+    }
 
     sheet.getCell(row, TAME_COLUMNS.unitLabor).value = item.unitLaborCost;
     sheet.getCell(row, TAME_COLUMNS.unitMaterials).value = item.unitMaterialsCost;
@@ -275,6 +348,147 @@ function writeSectionSheet(workbook: ExcelJS.Workbook, sheetName: string, sectio
   return directTotalRow;
 }
 
+const VO_STATUS_LABELS: Record<VariationOrder["status"], string> = {
+  proposed: "Ierosināts",
+  approved: "Apstiprināts",
+  rejected: "Noraidīts",
+};
+
+// Two logical tables (VO reģistrs, mainīto pozīciju saraksts) are stacked in
+// the same worksheet and therefore share columns 1-9 despite having
+// different meanings per table (e.g. col. 1 is "Nr." (VO number) in the
+// register but "Sadaļa" in the diff table) - widths below are picked wide
+// enough for whichever table's content in that column is longer; a
+// too-narrow value clips text, a too-wide one is only extra whitespace, so
+// erring wide is the safe choice.
+const VARIATION_ORDERS_SHEET_COLUMN_WIDTHS = [20, 12, 40, 28, 36, 16, 22, 10, 20];
+
+/**
+ * Writes the "IZMAIŅAS" worksheet - a VO reģistrs (one row per Variation
+ * Order: number/date/status/title/justification/instructedBy and this VO's
+ * own impact on tiešās izmaksas, see computeVariationOrderDirectTotalImpact)
+ * followed by a table of every pozīcija that differs from the frozen bāze
+ * (see diffAgainstBaseline) after applying all APPROVED VO - i.e. exactly
+ * what's currently rendered in the section sheets. Only called when the
+ * project has at least one VO (see exportBoqToWorkbook) - a project that
+ * never used this feature gets no extra sheet, keeping its export unchanged.
+ */
+function writeVariationOrdersSheet(
+  workbook: ExcelJS.Workbook,
+  state: BoqState,
+  baselineSections: BoqSection[],
+  currentSections: BoqSection[],
+): void {
+  const sheet = workbook.addWorksheet("IZMAIŅAS");
+  VARIATION_ORDERS_SHEET_COLUMN_WIDTHS.forEach((width, i) => {
+    sheet.getColumn(i + 1).width = width;
+  });
+
+  const headerLines = writeProjectHeaderBlock(sheet, state, 2, 7);
+  let row = headerLines + 2; // viena tukša atdalītājrinda
+
+  sheet.getCell(row, 1).value = "Izmaiņu reģistrs";
+  sheet.getCell(row, 1).font = { ...HEADER_FONT, size: 13 };
+  row += 2;
+
+  const registerHeaderRow = row;
+  const registerHeaders = [
+    "Nr.",
+    "Datums",
+    "Statuss",
+    "Nosaukums",
+    "Pamatojums",
+    "Instruēja",
+    "Ietekme uz tiešajām izmaksām (EUR)",
+  ];
+  registerHeaders.forEach((label, i) => {
+    const cell = sheet.getCell(registerHeaderRow, i + 1);
+    cell.value = label;
+    cell.font = HEADER_FONT;
+  });
+  row += 1;
+
+  const firstVoRow = row;
+  state.variationOrders.forEach((vo, i) => {
+    const r = firstVoRow + i;
+    sheet.getCell(r, 1).value = vo.number;
+    sheet.getCell(r, 2).value = vo.date;
+    sheet.getCell(r, 3).value = VO_STATUS_LABELS[vo.status];
+    sheet.getCell(r, 4).value = vo.title;
+    const justificationCell = sheet.getCell(r, 5);
+    justificationCell.value = vo.justification;
+    justificationCell.alignment = { wrapText: true, vertical: "top" };
+    sheet.getCell(r, 6).value = vo.instructedBy;
+    const impactCell = sheet.getCell(r, 7);
+    impactCell.value = computeVariationOrderDirectTotalImpact(baselineSections, state.variationOrders, vo.id);
+    impactCell.numFmt = MONEY_FORMAT;
+  });
+  row = firstVoRow + state.variationOrders.length + 1; // + viena tukša atdalītājrinda
+
+  sheet.getCell(row, 1).value = "Mainītās pozīcijas (bāze -> pašreizējais)";
+  sheet.getCell(row, 1).font = { ...HEADER_FONT, size: 13 };
+  row += 2;
+
+  const diffHeaderRow = row;
+  const diffHeaders = [
+    "Sadaļa",
+    "Nr.",
+    "Nosaukums",
+    "Mērv.",
+    "Bāzes daudzums",
+    "Pašreizējais daudzums",
+    "Delta",
+    "Izslēgts",
+    "Tiešo izmaksu delta (EUR)",
+  ];
+  diffHeaders.forEach((label, i) => {
+    const cell = sheet.getCell(diffHeaderRow, i + 1);
+    cell.value = label;
+    cell.font = HEADER_FONT;
+  });
+  row += 1;
+
+  const diffRows = diffAgainstBaseline(baselineSections, currentSections);
+  diffRows.forEach((diffRow, i) => {
+    const r = row + i;
+    sheet.getCell(r, 1).value = diffRow.sectionName;
+    sheet.getCell(r, 2).value = diffRow.code;
+    const nameCell = sheet.getCell(r, 3);
+    nameCell.value = diffRow.description;
+    nameCell.alignment = { wrapText: true, vertical: "top" };
+
+    const baseCell = sheet.getCell(r, 5);
+    if (diffRow.baselineQuantity === null) {
+      baseCell.value = "JAUNS";
+    } else {
+      baseCell.value = diffRow.baselineQuantity;
+      baseCell.numFmt = QUANTITY_FORMAT;
+    }
+    sheet.getCell(r, 4).value = diffRow.unit;
+
+    const currentCell = sheet.getCell(r, 6);
+    currentCell.value = diffRow.currentQuantity;
+    currentCell.numFmt = QUANTITY_FORMAT;
+
+    const deltaCell = sheet.getCell(r, 7);
+    deltaCell.value = diffRow.quantityDelta;
+    deltaCell.numFmt = QUANTITY_FORMAT;
+
+    sheet.getCell(r, 8).value = diffRow.excluded ? "Jā" : "Nē";
+
+    const costDeltaCell = sheet.getCell(r, 9);
+    costDeltaCell.value = diffRow.directTotalDelta;
+    costDeltaCell.numFmt = MONEY_FORMAT;
+  });
+
+  const lastRow = row + diffRows.length;
+  for (const sheetRow of sheet.getRows(1, lastRow) ?? []) {
+    sheetRow?.eachCell({ includeEmpty: false }, (cell) => {
+      cell.font = { ...cell.font, name: "Arial" };
+    });
+  }
+}
+
 export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "tames-modulis";
@@ -323,13 +537,25 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
     cell.font = HEADER_FONT;
   });
 
-  const usedSheetNames = new Set<string>(["KOPSAVILKUMS"]);
-  const boqSummary = summarizeBoq(state);
+  const usedSheetNames = new Set<string>(["KOPSAVILKUMS", "IZMAIŅAS"]);
+  // A frozen baseline (state.baselineApprovedAt !== null) means state.sections
+  // IS the bāze (never mutated after freeze, see models/boq.ts) - the sheets
+  // below render the CURRENT scope (bāze + apstiprinātās VO), matching real
+  // FIDIC practice where the working tāme reflects approved changes while a
+  // separate register documents them (see writeVariationOrdersSheet). Without
+  // a frozen baseline, state.sections is just the (draft) tāme as always.
+  const hasBaseline = state.baselineApprovedAt !== null;
+  const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
+  const currentSections = hasBaseline ? deriveCurrentSections(state.sections, approvedVariationOrders) : state.sections;
+  const exportState: BoqState = hasBaseline ? { ...state, sections: currentSections } : state;
+
+  const boqSummary = summarizeBoq(exportState);
   const firstSectionRow = tableHeaderRow + 1;
 
-  state.sections.forEach((section, i) => {
+  currentSections.forEach((section, i) => {
     const sheetName = sanitizeSheetName(section.name, usedSheetNames);
-    const directTotalRow = writeSectionSheet(workbook, sheetName, section, state);
+    const baselineSection = hasBaseline ? state.sections[i] : null;
+    const directTotalRow = writeSectionSheet(workbook, sheetName, section, exportState, baselineSection);
     const row = firstSectionRow + i;
     const sectionSummary = boqSummary.sections[i];
 
@@ -355,8 +581,8 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
     }
   });
 
-  const lastSectionRow = firstSectionRow + state.sections.length - 1;
-  const totalsRow = firstSectionRow + state.sections.length;
+  const lastSectionRow = firstSectionRow + currentSections.length - 1;
+  const totalsRow = firstSectionRow + currentSections.length;
   summary.getCell(totalsRow, 1).value = "KOPĀ";
   summary.getCell(totalsRow, 1).font = HEADER_FONT;
 
@@ -370,7 +596,7 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   ];
   for (const col of [2, 3, 4, 5, 6, 7]) {
     const cell = summary.getCell(totalsRow, col);
-    if (state.sections.length > 0) {
+    if (currentSections.length > 0) {
       const letter = colLetter(col);
       cell.value = {
         formula: `SUM(${letter}${firstSectionRow}:${letter}${lastSectionRow})`,
@@ -403,6 +629,10 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
     row?.eachCell({ includeEmpty: false }, (cell) => {
       cell.font = { ...cell.font, name: "Arial" };
     });
+  }
+
+  if (state.variationOrders.length > 0) {
+    writeVariationOrdersSheet(workbook, state, state.sections, currentSections);
   }
 
   return workbook;

@@ -115,6 +115,8 @@ describe("migrateToCurrent", () => {
     expect(migrated.client).toEqual({ name: "", regNr: "", address: "" });
     expect(migrated.preparedBy).toBe("");
     expect(migrated.checkedBy).toBe("");
+    expect(migrated.baselineApprovedAt).toBeNull();
+    expect(migrated.variationOrders).toEqual([]);
   });
 
   it("preserves an already-present discountRate instead of overwriting it during migration", () => {
@@ -175,6 +177,63 @@ describe("migrateToCurrent", () => {
     expect(migrated.preparedBy).toBe("Jānis Bērziņš");
     expect(migrated.checkedBy).toBe("Anna Kalniņa");
     expect(migrated.sections[0].estimateNumber).toBe("1-1");
+  });
+
+  it("defaults baselineApprovedAt/variationOrders when migrating v5 data that predates them", () => {
+    const v5 = {
+      schemaVersion: 5,
+      projectId: "proj-11",
+      projectName: "v5 bez VO",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+    };
+    const migrated = migrateToCurrent(v5);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.baselineApprovedAt).toBeNull();
+    expect(migrated.variationOrders).toEqual([]);
+  });
+
+  it("preserves already-present baselineApprovedAt/variationOrders during migration", () => {
+    const vo = {
+      id: "vo-1",
+      number: "VO-1",
+      title: "Papildu darbi",
+      justification: "Pasūtītāja pieprasījums",
+      instructedBy: "Pasūtītājs",
+      date: "2026-01-01",
+      status: "approved",
+      statusDate: "2026-01-05",
+      changes: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-05T00:00:00.000Z",
+    };
+    const v5 = {
+      schemaVersion: 5,
+      projectId: "proj-12",
+      projectName: "v5 ar VO",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [vo],
+    };
+    const migrated = migrateToCurrent(v5);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.baselineApprovedAt).toBe("2025-12-01T00:00:00.000Z");
+    expect(migrated.variationOrders).toEqual([vo]);
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {

@@ -14,6 +14,16 @@ Npm workspace ar divām pakotnēm:
   nosaukums/reģ.nr./adrese) un `preparedBy`/`checkedBy` ir projekta līmenī;
   `BoqSection.estimateNumber` ir manuāli ievadāma tāmes numerācija sadaļas
   līmenī — skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
+  `BoqState.baselineApprovedAt`/`variationOrders` un `BoqItem.excluded` —
+  tāmes izmaiņu (Variation Order) vadība, skat. "Tāmes izmaiņu (Variation
+  Order) vadība" zemāk.
+- `src/models/variationOrder.ts` — `VariationOrder`/`VariationOrderChange`
+  tipi (skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk).
+- `src/variationOrders/deriveCurrentState.ts` — `deriveCurrentSections`/
+  `deriveCurrentState` (atvasina bāze + apstiprinātās VO), VO izveide/
+  numerācija, `computeVariationOrderDirectTotalImpact`,
+  `diffAgainstBaseline` — skat. "Tāmes izmaiņu (Variation Order) vadība"
+  zemāk pilnu semantiku.
 - `src/storage/StorageAdapter.ts` — glabāšanas saskarne
   (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
   (fails <-> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
@@ -30,7 +40,7 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5`, `migrateToCurrent` atbalsta
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6`, `migrateToCurrent` atbalsta
   pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
@@ -70,7 +80,8 @@ Npm workspace ar divām pakotnēm:
     `calculations/boq.ts`, lai nebūtu divu patiesības avotu.
 - `test/` — vitest testi (glabāšanas round-trip, migrāciju stubs, aprēķini,
   Excel eksports/imports round-trip un imports no "svešas" darblapas,
-  `ProjectService` CRUD pret in-memory `StorageAdapter`).
+  `ProjectService` CRUD pret in-memory `StorageAdapter`,
+  `variationOrders/deriveCurrentState.ts` derivācija/VO izveide/diff).
 
 ### Node vs. universāls kods, un ieejas punkti
 
@@ -118,10 +129,16 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   "Imports esošā projektā" zemāk). Eksporta/importa pogas importē
   `exportBoqToBuffer`/`importBoqFromBuffer` ar dinamisku
   `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis statiski augšā
-  failā — skat. "Bundle izmērs / code-splitting" zemāk.
+  failā — skat. "Bundle izmērs / code-splitting" zemāk. "Apstiprināt bāzes
+  tāmi" poga un "Tāme"/"Izmaiņas (VO)" cilnes pēc iesaldēšanas — skat.
+  "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+- `src/components/VariationOrders.tsx` — "Izmaiņu" cilnes saturs (VO
+  izveide/apstiprināšana/noraidīšana, izmaiņu pievienošana, diff skats) —
+  skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
-  `ProjectEditor.tsx` katrai sadaļai.
+  `ProjectEditor.tsx` katrai sadaļai. `readOnly` props atspējo ievadi pēc
+  bāzes iesaldēšanas (skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk).
 - `src/App.tsx` — savieno sarakstu un redaktoru, tur vienīgā
   `IndexedDbStorageAdapter` instance.
 - `index.html` — `<link rel="icon">` ir inline SVG `data:` URI (zils
@@ -153,6 +170,11 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   lietotāju. **Tāmes numerācija (`estimateNumber`) ir sadaļas līmenī**,
   brīvs teksts, neatkarīgs no sadaļas nosaukuma UN no Excel eksporta lapas
   nosaukuma. Skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
+- **Tāmes izmaiņas (Variation Order) ir numurētas entītijas ar formālu
+  statusa plūsmu** (ierosināts/apstiprināts/noraidīts), NEVIS tikai
+  rediģējami "pašreizējie" daudzumi — un "pašreizējais" stāvoklis vienmēr
+  ATVASINĀTS no iesaldētas bāzes + apstiprinātajām VO, bāze pēc iesaldēšanas
+  nekad netiek mutēta. Skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - **Aprēķini noapaļo tikai vienreiz, beigās** (`summarizeBoq`) — sadaļu un
   kopējās summas tiek saskaitītas no nenoapaļotiem starprezultātiem, lai
   daudzu sīku pozīciju gadījumā noapaļošanas kļūda nesakrātos.
@@ -477,6 +499,99 @@ konsoles kļūdu, imports strādā tāpat kā iepriekš.
   platumi apstiprināti gan lietotnē, gan pašā failā.
 - ✅ Reāls 47-sadaļu VELVE fails joprojām importējas pareizi ar jauno
   `estimateNumber` lauku.
+
+### Tāmes izmaiņu (Variation Order) vadība
+
+Sesijā 18 pievienota FIDIC-stila tāmes izmaiņu vadība pēc bāzes tāmes
+apstiprināšanas — lēmumi apstiprināti ar lietotāju PIRMS ieviešanas (skat.
+PROGRESS.md Sesija 18 pilnu jautājumu/atbilžu sarakstu).
+
+**Bāzes iesaldēšana ir skaidra darbība**, nevis netieša. `BoqState.
+baselineApprovedAt: string | null` — `null` nozīmē "melnraksts" (sadaļas/
+pozīcijas brīvi rediģējamas kā jebkurā projektā pirms šīs funkcijas). Kad
+lietotājs nospiež "Apstiprināt bāzes tāmi" (`ProjectEditor.tsx`), datums
+tiek iestatīts un **`sections` no tā brīža ir bāze — pastāvīga, nekad vairs
+tieši nerediģēta atsauce**. Nav atsevišķa "baseline snapshot" lauka —
+`sections` PATS IR bāze pēc iesaldēšanas, tāpēc nav divu paralēlu kopiju,
+kas varētu izklīst.
+
+**"Pašreizējais" stāvoklis vienmēr ATVASINĀTS, nekad glabāts.**
+`deriveCurrentSections(baseline, variationOrders)`
+(`variationOrders/deriveCurrentState.ts`) klonē bāzi un piemēro padoto VO
+sarakstu SECĪGI — funkcija pati NEZINA/NEPĀRBAUDA statusu, saucējs izvēlas,
+kuras VO padot (parasti tikai `status === "approved"`, skat.
+`deriveCurrentState`). Šis dizains (nevis VO apstiprināšana tieši pārraksta
+`quantity`) izvēlēts apzināti: bāze paliek vienīgais patiesības avots
+pārbaudei/audit trail, un tā pati atvasināšanas funkcija ir atkalizmantojama
+"kas notiktu, ja" simulācijām (skat. zemāk
+`computeVariationOrderDirectTotalImpact`).
+
+**VO datu modelis** (`models/variationOrder.ts`): `VariationOrder` (numurs
+"VO-N" secīgs, statuss ierosināts/apstiprināts/noraidīts, datums,
+pamatojums, instruējošā puse, `changes[]`). Katra `VariationOrderChange`
+attiecas VAI NU uz jau esošu pozīciju (`itemId` — daudzuma korekcija
+`quantityDelta` un/vai pilnīga izslēgšana `excluded`), VAI ievieš pavisam
+jaunu pozīciju esošā sadaļā (`itemId: null`, dati `newItem` laukā). **Jaunas
+pozīcijas dabū `id` vienādu ar to izveidojušās izmaiņas `id`** — tas ļauj
+VĒLĀKAI VO atsaukties uz to tāpat kā uz bāzes pozīciju (piem. viena VO
+pievieno pozīciju, cita to vēlāk izslēdz vai koriģē).
+
+**"Izslēgta" pozīcija ir atsevišķs karogs, NAV vienāds ar `quantity = 0`**
+(apstiprināts ar lietotāju — `0` var nozīmēt arī "vēl nav sākts", ne
+"atcelts"). `BoqItem.excluded?: boolean` — TIKAI atvasinātajā stāvoklī var
+būt `true` (bāzes pozīcijās vienmēr false/undefined).
+`calculations/boq.ts` `calculateItemCosts` izslēgtai pozīcijai vienmēr
+atgriež nulles izmaksas NEATKARĪGI no `quantity` — daudzums paliek redzams
+atsaucei/diff skatam, tikai izmaksas tiek nullētas.
+
+**Zināms ierobežojums (apzināti ārpus šī uzdevuma apjoma):** VO var
+pievienot jaunas POZĪCIJAS esošā sadaļā, bet NE jaunas SADAĻAS — lietotājs
+to nepieprasīja precizējošajos jautājumos. Nākotnē varētu paplašināt
+`VariationOrderChange`, analoģiski `newItem`.
+
+**Finansiālā ietekme** — `computeVariationOrderDirectTotalImpact(baseline,
+variationOrders, voId)` rēķina VIENAS VO ietekmi (neatkarīgi no tās paša
+statusa — arī vēl "ierosināta" VO rāda paredzamo ietekmi) kā starpību starp
+atvasināto stāvokli TIEŠI PIRMS un TŪLĪT PĒC šīs VO piemērošanas
+(iepriekšējo APSTIPRINĀTO VO kontekstā, masīva secībā). Tas pareizi
+apstrādā VISUS gadījumus (daudzuma korekcija/izslēgšana/jauna pozīcija)
+vienādi, bez atsevišķas per-izmaiņas formulas dublēšanās — maksā divas
+`deriveCurrentSections` izsaukumus, kas ir pieņemami reālu projektu VO
+skaitam (desmiti, ne tūkstoši). **Ierobežojums:** ja vairākas VO maina TO
+PAŠU pozīciju, katras VO "ietekme" ir marginālā ietekme SAVĀ secības
+punktā (pareizi kumulatīvai bilancei), nevis izolēta "šīs VO vienas paša
+nopelns".
+
+**UI** (`ProjectEditor.tsx`, `VariationOrders.tsx`): pēc iesaldēšanas
+parādās dzeltens baneris un divas cilnes — "Tāme" (rāda ATVASINĀTO
+stāvokli, `ItemsTable` `readOnly`, struktūras pogas paslēptas, "Importēt
+Excel" atspējots — imports pārrakstītu bāzi tieši) un "Izmaiņas (VO)"
+(`VariationOrders.tsx` — jaunas VO forma, VO karšu saraksts ar
+apstiprināšanas/noraidīšanas pogām TIKAI `proposed` statusam, izmaiņas
+pievienošanas forma ar sadaļas/pozīcijas izvēli no ATVASINĀTĀ pašreizējā
+stāvokļa, un "Mainītās pozīcijas" diff tabula visam projektam). Pirms
+iesaldēšanas UI izskatās un darbojas identiski iepriekšējam — cilnes
+vispār nerenderējas, jo VO jēdziens bez bāzes nav definēts.
+
+**Excel eksports** (`excel/export.ts`): kad bāze iesaldēta, sadaļu lapas un
+`KOPSAVILKUMS` rāda ATVASINĀTO (bāze + apstiprinātās VO) stāvokli — atbilst
+reālai FIDIC praksei, kur darba tāme atspoguļo apstiprinātās izmaiņas.
+Katrai sadaļu lapai divas papildu kolonnas STINGRI AIZ esošā
+`TAME_COLUMNS` izkārtojuma ("Bāzes daudzums", "Delta") — novietojums aiz
+fiksētajām kolonnām nozīmē, ka atkārtots imports (kas kolonnas atrod pēc
+galvenes teksta, nevis pozīcijas) nav ietekmēts. Izslēgta pozīcija vizuāli
+marķēta ar pārsvītrojumu (`font.strike`), NEVIS teksta piedēkli aprakstā —
+lai atkārtots imports nesabojātu aprakstu. Jauna **"IZMAIŅAS" darblapa**
+(tikai, ja projektam ir vismaz viena VO) — izmaiņu reģistrs (viena rinda
+katrai VO ar finansiālo ietekmi) + "Mainītās pozīcijas" tabula
+(`diffAgainstBaseline`). Bez iesaldētas bāzes eksports paliek pilnībā
+nemainīgs (backward compatible ar projektiem, kas šo funkciju nelieto).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles):**
+skat. PROGRESS.md Sesija 18 pilnu pārbaudes aprakstu — bāzes iesaldēšana,
+VO izveide/izmaiņu pievienošana (daudzuma pieaugums UN izslēgšana)/
+apstiprināšana, diff skats, Excel eksports (`.xlsx` fails pārbaudīts ar
+`openpyxl`), konsolē nav kļūdu.
 
 ### Favicon
 

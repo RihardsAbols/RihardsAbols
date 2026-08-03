@@ -49,6 +49,14 @@ const migrations: Record<number, Migration> = {
       ? data.sections.map((section) => migrateSectionV4ToV5(section as Record<string, unknown>))
       : data.sections,
   }),
+  // v5 had no baselineApprovedAt/variationOrders (Tāmes izmaiņu/Variation
+  // Order vadība) - default to "no baseline frozen yet, no VOs", equivalent
+  // to a project that never used the feature.
+  5: (data) => ({
+    ...data,
+    baselineApprovedAt: typeof data.baselineApprovedAt === "string" ? data.baselineApprovedAt : null,
+    variationOrders: Array.isArray(data.variationOrders) ? data.variationOrders : [],
+  }),
 };
 
 function migrateCompanyDetails(value: unknown): { name: string; regNr: string; address: string } {

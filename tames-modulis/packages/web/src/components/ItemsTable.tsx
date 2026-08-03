@@ -10,6 +10,14 @@ interface ItemsTableProps {
   items: BoqItem[];
   onUpdateItem: (itemIndex: number, patch: Partial<BoqItem>) => void;
   onRemoveItem: (itemIndex: number) => void;
+  /**
+   * Kad tāmes bāze iesaldēta (skat. ProjectEditor.tsx baselineLocked), šī
+   * tabula rāda ATVASINĀTO (bāze + apstiprinātās VO) stāvokli - tieša
+   * rediģēšana vairs nav pieejama (izmaiņas iet caur "Izmaiņu" cilni), tāpēc
+   * ievades lauki tiek atspējoti, nevis paslēpti, lai vērtības joprojām būtu
+   * salasāmas tajā pašā izkārtojumā.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -20,7 +28,7 @@ interface ItemsTableProps {
  * import+render take ~17-26s. Row height is a fixed estimate (not measured
  * per-row), which is fine here since every row has the same layout.
  */
-export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProps) {
+export function ItemsTable({ items, onUpdateItem, onRemoveItem, readOnly = false }: ItemsTableProps) {
   const [scrollTop, setScrollTop] = useState(0);
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
@@ -56,13 +64,18 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProp
           {items.slice(startIndex, endIndex).map((item, i) => {
             const itemIndex = startIndex + i;
             return (
-              <tr key={item.id} style={{ height: ROW_HEIGHT }}>
+              <tr key={item.id} className={item.excluded ? "excluded-row" : undefined} style={{ height: ROW_HEIGHT }}>
                 <td>
-                  <input value={item.code} onChange={(e) => onUpdateItem(itemIndex, { code: e.target.value })} />
+                  <input
+                    value={item.code}
+                    disabled={readOnly}
+                    onChange={(e) => onUpdateItem(itemIndex, { code: e.target.value })}
+                  />
                 </td>
                 <td>
                   <input
                     value={item.description}
+                    disabled={readOnly}
                     onChange={(e) => onUpdateItem(itemIndex, { description: e.target.value })}
                   />
                 </td>
@@ -70,6 +83,7 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProp
                   <input
                     className="unit-input"
                     value={item.unit}
+                    disabled={readOnly}
                     onChange={(e) => onUpdateItem(itemIndex, { unit: e.target.value })}
                   />
                 </td>
@@ -78,6 +92,7 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProp
                     type="number"
                     className="number-input"
                     value={item.quantity}
+                    disabled={readOnly}
                     onChange={(e) => onUpdateItem(itemIndex, { quantity: Number(e.target.value) })}
                   />
                 </td>
@@ -86,6 +101,7 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProp
                     type="number"
                     className="number-input"
                     value={item.unitLaborCost}
+                    disabled={readOnly}
                     onChange={(e) => onUpdateItem(itemIndex, { unitLaborCost: Number(e.target.value) })}
                   />
                 </td>
@@ -94,6 +110,7 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProp
                     type="number"
                     className="number-input"
                     value={item.unitMaterialsCost}
+                    disabled={readOnly}
                     onChange={(e) => onUpdateItem(itemIndex, { unitMaterialsCost: Number(e.target.value) })}
                   />
                 </td>
@@ -102,13 +119,16 @@ export function ItemsTable({ items, onUpdateItem, onRemoveItem }: ItemsTableProp
                     type="number"
                     className="number-input"
                     value={item.unitMechanismsCost}
+                    disabled={readOnly}
                     onChange={(e) => onUpdateItem(itemIndex, { unitMechanismsCost: Number(e.target.value) })}
                   />
                 </td>
                 <td>
-                  <button aria-label="Dzēst pozīciju" onClick={() => onRemoveItem(itemIndex)}>
-                    ×
-                  </button>
+                  {!readOnly && (
+                    <button aria-label="Dzēst pozīciju" onClick={() => onRemoveItem(itemIndex)}>
+                      ×
+                    </button>
+                  )}
                 </td>
               </tr>
             );

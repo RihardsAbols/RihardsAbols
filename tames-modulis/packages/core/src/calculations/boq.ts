@@ -14,6 +14,12 @@ export interface BoqItemCosts {
 }
 
 export function calculateItemCosts(item: BoqItem): BoqItemCosts {
+  // Excluded items (fully omitted via an approved Variation Order) always
+  // cost zero, regardless of quantity - the quantity is kept for display/
+  // diff purposes (see models/boq.ts BoqItem.excluded), not for calculation.
+  if (item.excluded) {
+    return { laborTotal: 0, materialsTotal: 0, mechanismsTotal: 0, directTotal: 0 };
+  }
   const laborTotal = item.quantity * item.unitLaborCost;
   const materialsTotal = item.quantity * item.unitMaterialsCost;
   const mechanismsTotal = item.quantity * item.unitMechanismsCost;

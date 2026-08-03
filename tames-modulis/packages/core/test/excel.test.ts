@@ -6,6 +6,8 @@ import { exportBoqToBuffer, exportBoqToWorkbook } from "../src/excel/export.js";
 import { importBoqFromBuffer, importBoqFromWorkbook } from "../src/excel/import.js";
 import { createEmptyBoqState } from "../src/models/boq.js";
 import type { BoqItem, BoqState } from "../src/models/boq.js";
+import type { VariationOrderChange } from "../src/models/variationOrder.js";
+import { createVariationOrder } from "../src/variationOrders/deriveCurrentState.js";
 
 function item(overrides: Partial<BoqItem> = {}): BoqItem {
   return {
@@ -385,5 +387,112 @@ describe("importBoqFromWorkbook against hand-built sheets (real-world structure)
     const state = importBoqFromWorkbook(workbook, "proj-z", "Projekts");
 
     expect(state.sections[0].items).toHaveLength(unitVariants.length);
+  });
+});
+
+function sampleStateWithApprovedVariationOrder(): BoqState {
+  const state = sampleState();
+  state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+
+  const increaseChange: VariationOrderChange = {
+    id: "change-qty",
+    sectionId: "sec-1",
+    itemId: "a",
+    quantityDelta: 30,
+    excluded: false,
+    newItem: null,
+  };
+  const excludeChange: VariationOrderChange = {
+    id: "change-exclude",
+    sectionId: "sec-1",
+    itemId: "b",
+    quantityDelta: 0,
+    excluded: true,
+    newItem: null,
+  };
+
+  const vo = createVariationOrder([], {
+    title: "Papildu darbi",
+    justification: "Pasūtītāja pieprasījums",
+    instructedBy: "Pasūtītājs",
+    date: "2026-01-10",
+  });
+  vo.status = "approved";
+  vo.statusDate = "2026-01-11";
+  vo.changes = [increaseChange, excludeChange];
+  state.variationOrders = [vo];
+  return state;
+}
+
+describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", () => {
+  it("omits delta columns and the IZMAIŅAS sheet for a project that never used variation orders", () => {
+    const state = sampleState();
+    const workbook = exportBoqToWorkbook(state);
+
+    expect(workbook.getWorksheet("IZMAIŅAS")).toBeUndefined();
+    const sheet = workbook.getWorksheet("1.1_Dem.")!;
+    expect(sheet.getCell(11, TAME_COLUMNS.totalAll + 2).value).toBeNull();
+  });
+
+  it("renders section sheets with the current (bāze + apstiprinātās VO) quantities and Bāzes daudzums/Delta columns", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("1.1_Dem.")!;
+
+    const baseCol = TAME_COLUMNS.totalAll + 2;
+    const deltaCol = TAME_COLUMNS.totalAll + 3;
+    expect(sheet.getCell(11, baseCol).value).toBe("Bāzes daudzums");
+    expect(sheet.getCell(11, deltaCol).value).toBe("Delta");
+
+    // item "a": +30 quantityDelta from the VO.
+    expect(sheet.getCell(12, TAME_COLUMNS.quantity).value).toBe(130);
+    expect(sheet.getCell(12, baseCol).value).toBe(100);
+    expect(sheet.getCell(12, deltaCol).value).toBe(30);
+
+    // item "b": excluded - quantity unchanged, but struck through and costed at 0.
+    expect(sheet.getCell(13, TAME_COLUMNS.quantity).value).toBe(50);
+    expect(sheet.getCell(13, baseCol).value).toBe(50);
+    expect(sheet.getCell(13, deltaCol).value).toBe(0);
+    expect(sheet.getCell(13, TAME_COLUMNS.name).font?.strike).toBe(true);
+
+    // Tiešās izmaksas row: a=130*10=1300, b excluded=0 -> total 1300.
+    expect(sheet.getCell(14, TAME_COLUMNS.totalAll).value).toMatchObject({ result: 1300 });
+  });
+
+  it("adds an IZMAIŅAS sheet with a VO register and a diff table of changed items only", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("IZMAIŅAS")!;
+    expect(sheet).toBeDefined();
+
+    // Header block (7 lines, no estimateNumber on this sheet) rows 1-7, blank
+    // row 8, "Izmaiņu reģistrs" title row 9, blank row 10, register header row 11.
+    expect(sheet.getCell(1, 1).value).toBe("Projekts:");
+    expect(sheet.getCell(9, 1).value).toBe("Izmaiņu reģistrs");
+    expect(sheet.getCell(11, 1).value).toBe("Nr.");
+    expect(sheet.getCell(11, 3).value).toBe("Statuss");
+
+    // Register row 12: the one VO. Impact = +300 (item a) - 200 (item b) = +100.
+    expect(sheet.getCell(12, 1).value).toBe("VO-1");
+    expect(sheet.getCell(12, 3).value).toBe("Apstiprināts");
+    expect(sheet.getCell(12, 4).value).toBe("Papildu darbi");
+    expect(sheet.getCell(12, 7).value).toBe(100);
+
+    // "Mainītās pozīcijas" title row 14, blank, diff header row 16, data from row 17.
+    expect(sheet.getCell(14, 1).value).toBe("Mainītās pozīcijas (bāze -> pašreizējais)");
+    expect(sheet.getCell(16, 1).value).toBe("Sadaļa");
+
+    expect(sheet.getCell(17, 1).value).toBe("1.1_Dem.");
+    expect(sheet.getCell(17, 5).value).toBe(100); // bāzes daudzums
+    expect(sheet.getCell(17, 6).value).toBe(130); // pašreizējais daudzums
+    expect(sheet.getCell(17, 7).value).toBe(30); // delta
+    expect(sheet.getCell(17, 8).value).toBe("Nē"); // izslēgts
+
+    expect(sheet.getCell(18, 1).value).toBe("1.1_Dem.");
+    expect(sheet.getCell(18, 8).value).toBe("Jā"); // izslēgts
+    expect(sheet.getCell(18, 9).value).toBe(-200); // tiešo izmaksu delta
+
+    // The unchanged item "c" (sec-2) never appears in the diff table.
+    expect(sheet.getCell(19, 1).value).toBeNull();
   });
 });

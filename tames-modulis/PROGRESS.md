@@ -848,51 +848,173 @@ Sesijas 17 izmaiņas (kolonnu platumi/rekvizīti/tāmes numerācija) reālā
 lietotnē ar reālo VELVE failu un apstiprināja, ka strādā. Nav ziņots par
 neatbilstībām — nekas atklāts, kas jālabo pirms nākamā uzdevuma.
 
-## 🔜 NĀKAMAIS UZDEVUMS — Tāmes izmaiņu (variation orders) vadība
+## Sesija 18: Tāmes izmaiņu (Variation Order) vadība — ✅ pabeigts
 
-**Šis ir lietotāja tieši pieprasītais nākamais uzdevums** (nevis kandidātu
-saraksts, kas jāapstiprina) — formulēts kā FIDIC inženiera/Cost Estimate
-Manager perspektīva: jāspēj izveidot un kontrolēt tāmes izmaiņas pēc
-sākotnējās (bāzes) tāmes apstiprināšanas. Trīs nosauktie gadījumi:
+**Uzdevums:** Sesijas 17 beigās atstātais "NĀKAMAIS UZDEVUMS" — FIDIC
+inženiera/Cost Estimate Manager perspektīva: izveidot un kontrolēt tāmes
+izmaiņas pēc bāzes tāmes apstiprināšanas (jauna tāme / apjomu samazinājums
+vai pozīciju izslēgšana / apjomu palielinājums).
 
-1. **Jauna tāme** — sākotnējā/bāzes tāme (pamatā jau eksistējošā
-   funkcionalitāte — projekta izveide, sadaļas, pozīcijas), bet, iespējams,
-   vajadzīga skaidra "šī ir apstiprinātā bāzes tāme" atzīme/"iesaldēšana",
-   pret kuru tiks salīdzinātas turpmākās izmaiņas.
-2. **Apjomu samazinājums** — pozīcijas tiek IZSLĒGTAS pilnībā (omitted) VAI
-   sākotnēji paredzētie daudzumi tiek samazināti (bet pozīcija paliek).
-3. **Apjomu palielinājums** — sākotnēji plānotie darbu apjomi tiek
-   palielināti.
+**Precizējoši jautājumi UZDOTI LIETOTĀJAM PIRMS ieviešanas** (divās kārtās,
+skat. sarunas vēsturi) un atbildes:
+- Izmaiņas ir **numurētas VO entītijas** (ne tikai "pašreizējie" daudzumi ar
+  diff pret bāzi) - katra var skart vairākas pozīcijas.
+- VO vajag **formālu statusa plūsmu**: ierosināts -> apstiprināts/noraidīts.
+- "Izslēgta" pozīcija ir **atsevišķs karogs** (`excluded`), NAV vienāds ar
+  `quantity = 0`.
+- UI: **atsevišķa "Izmaiņu" cilne** (nevis blakus kolonnas galvenajā tabulā).
+- Bāze tiek iesaldēta ar **skaidru darbību** ("Apstiprināt bāzes tāmi"), nevis
+  netieši pirmās VO izveidē.
+- "Pašreizējais" stāvoklis vienmēr **ATVASINĀTS** no bāzes + apstiprinātajām
+  VO (bāze pēc iesaldēšanas nekad netiek mutēta), nevis VO apstiprināšana
+  tieši pārraksta pozīcijas.
+- VO **drīkst pievienot pavisam jaunas pozīcijas** (ne tikai mainīt/izslēgt
+  bāzes pozīcijas) - atbilst reālai FIDIC praksei.
+- Excel: **iekļauts šajā uzdevumā** (nevis atlikts) - reģistra kopsavilkums +
+  delta kolonnas sadaļu lapās.
 
-**Šis ir liels, vēl NEPRECIZĒTS uzdevums** — pirms ieviešanas nākamajai
-sesijai JĀJAUTĀ lietotājam (nesākt kodēt uzreiz), vismaz par:
-- **Datu modelis:** vai katrai pozīcijai jāglabā `baselineQuantity`
-  (sākotnējais apjoms) + `currentQuantity` (pašreizējais), un starpība
-  atvasināta? Vai jāglabā pilna izmaiņu vēsture (katra VO/izmaiņas
-  pieprasījuma numurs, datums, pamatojums, statuss) - t.i. audit trail, ne
-  tikai divi skaitļi?
-- **Izmaiņu grupēšana:** vai "izmaiņa" ir numurēts, datēts objekts (piem.
-  "VO Nr. 3"), kas var skart VAIRĀKAS pozīcijas vienlaicīgi (kā reālā FIDIC
-  praksē), vai vienkārši rediģējami "pašreizējie" daudzumi ar diff skatu
-  pret bāzi (bez atsevišķas VO entītes)?
-- **"Izslēgta" pozīcija:** vai tas ir tas pats, kas `quantity = 0`, vai
-  vajag atsevišķu `excluded`/`omitted` karogu (jo `0` daudzums var nozīmēt
-  arī "vēl nav sākts", ne "atcelts")?
-- **Statusa/apstiprinājuma plūsma:** vai izmaiņām vajag statusu (piem.
-  ierosināts/apstiprināts/noraidīts), instruējošo pusi, datumu — atbilstoši
-  reālai FIDIC Variation Order administrēšanai, vai pietiek ar vienkāršu
-  "pašreizējā vērtība atšķiras no bāzes" bez formālas plūsmas?
-- **UI:** vajag salīdzinājuma/diff skatu (bāze pret pašreizējo, delta
-  daudzums, delta izmaksas) pa pozīciju UN summēts pa sadaļu/projektu —
-  kāds izkārtojums (blakus kolonnas esošajā tabulā, atsevišķa "Izmaiņu"
-  cilne, abi)?
-- **Excel eksports:** vai izmaiņu pārskatam (piem. "Izmaiņu reģistrs" vai
-  "Variation Order Summary") vajag savu darblapu, līdzīgi reālu FIDIC
-  projektu praksei (redzēts arī `izpildes-akts-validacija` skill domēnā)?
+**Datu modelis (`schemaVersion` `5 -> 6`):**
+- `packages/core/src/models/variationOrder.ts` (jauns fails) - `VariationOrder`
+  (`id`, `number` ("VO-N", secīgs), `title`, `justification`, `instructedBy`,
+  `date`, `status` (`proposed`/`approved`/`rejected`), `statusDate`,
+  `changes[]`, `createdAt`/`updatedAt`) un `VariationOrderChange` (`id`,
+  `sectionId`, `itemId` - `null` nozīmē jaunu pozīciju, `quantityDelta`,
+  `excluded`, `newItem` - aizpildīts tikai jaunām pozīcijām).
+- `packages/core/src/models/boq.ts` - `BoqItem.excluded?: boolean` (tikai
+  atvasinātajā stāvoklī var būt `true`, bāzes pozīcijās vienmēr
+  false/undefined), `BoqState.baselineApprovedAt: string | null` (iesaldēšanas
+  atzīme) un `BoqState.variationOrders: VariationOrder[]`.
 
-**Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu un
-CLAUDE.md pilnībā, tad UZREIZ uzdot lietotājam precizējošus jautājumus par
-augstāk minētajiem punktiem (līdzīgi kā Sesijās 15/17 pirms ieviešanas),
-NEVIS pieņemt lēmumus vienpusēji — šis ir sarežģītāks datu modeļa lēmums
-nekā jebkas iepriekšējais (skar `BoqItem`/`BoqSection` struktūru, iespējams
-jaunu schemaVersion, UI, un Excel eksportu vienlaicīgi).
+**Aprēķini/atvasināšana (`packages/core/src/variationOrders/deriveCurrentState.ts`,
+jauns fails):**
+- `deriveCurrentSections(baseline, variationOrders)` - klonē bāzi un piemēro
+  padoto VO sarakstu SECĪGI (masīva secībā, ne pēc statusa/datuma - saucēja
+  ziņā, kuras VO padot). Jaunām pozīcijām (`itemId === null`) piešķir
+  `id` vienādu ar izveidojušās izmaiņas `id`, tāpēc VĒLĀKA VO var atsaukties
+  uz to tāpat kā uz bāzes pozīciju (piem. viena VO pievieno pozīciju, cita to
+  vēlāk izslēdz). Daudzuma korekcija klampēta pie 0 (nesamazinās zem 0).
+- `deriveCurrentState(state)` - ērtības funkcija: `sections` = bāze +
+  TIKAI apstiprinātās VO. Lieto UI ("Tāme" cilne pēc iesaldēšanas) un Excel
+  eksports.
+- `computeVariationOrderDirectTotalImpact(baseline, variationOrders, voId)` -
+  konkrētas VO finansiālā ietekme (neatkarīgi no tās paša statusa), rēķināta
+  kā starpība starp atvasināto stāvokli TIEŠI PIRMS un TŪLĪT PĒC šīs VO
+  (iepriekšējo APSTIPRINĀTO VO kontekstā) - pareizi apstrādā visus
+  gadījumus (daudzuma korekcija/izslēgšana/jauna pozīcija) bez atsevišķas
+  per-izmaiņas formulas. **Zināms ierobežojums:** ja VAIRĀKAS VO maina TO
+  PAŠU pozīciju (piem. viena palielina daudzumu, cita vēlāk to izslēdz), šīs
+  funkcijas "ietekme" katrai VO ir marginālā ietekme SAVĀ secības punktā, nevis
+  izolēta "šīs VO vienas paša nopelns" - tas ir pareizi kumulatīvai bilancei,
+  bet var pārsteigt, lasot atsevišķas VO rindas reģistrā.
+- `diffAgainstBaseline(baseline, current)` - atgriež TIKAI pozīcijas, kas
+  atšķiras (daudzums mainīts, izslēgtas, vai jaunas) - filtrē negrozītās, lai
+  lielai tāmei (tūkstošiem pozīciju) diff skats nebūtu nelietojams troksnis.
+- `calculations/boq.ts` `calculateItemCosts` - izslēgtai pozīcijai (`excluded`)
+  vienmēr atgriež nulles izmaksas neatkarīgi no `quantity` (daudzums paliek
+  redzams atsaucei/diff skatam).
+
+**Migrācija:** `storage/migrations/index.ts` `5: (data) => ...` - defaultē
+`baselineApprovedAt: null`, `variationOrders: []` trūkstošiem laukiem,
+saglabājot jau esošos.
+
+**Excel eksports (`excel/export.ts`):**
+- Kad `baselineApprovedAt !== null`, sadaļu lapas (un `KOPSAVILKUMS`) rāda
+  ATVASINĀTO (bāze + apstiprinātās VO) stāvokli, nevis bāzi tieši - atbilst
+  reālai FIDIC praksei (darba tāme atspoguļo apstiprinātās izmaiņas). Katrai
+  sadaļu lapai divas papildu kolonnas AIZ esošā izkārtojuma (17. spacer, 18.
+  "Bāzes daudzums", 19. "Delta") - novietotas STINGRI aiz `TAME_COLUMNS`
+  fiksētā izkārtojuma, tāpēc atkārtots imports (kas kolonnas atrod pēc
+  galvenes teksta) nav ietekmēts. Izslēgta pozīcija vizuāli marķēta ar
+  pārsvītrojumu (`font.strike`) "Būvdarbu nosaukums"/"Daudzums" šūnās -
+  NEVIS teksta piedēkli aprakstā, lai atkārtots imports nesabojātu tekstu.
+  Bez iesaldētas bāzes eksports paliek NEMAINĪTS (backward compatible).
+- Jauna **"IZMAIŅAS" darblapa** (rakstīta tikai, ja `variationOrders.length >
+  0`) - projekta rekvizītu galvenes bloks, "Izmaiņu reģistrs" (viena rinda
+  katrai VO: numurs/datums/statuss/nosaukums/pamatojums/instruēja/ietekme uz
+  tiešajām izmaksām), un "Mainītās pozīcijas" tabula (`diffAgainstBaseline`
+  rezultāts - sadaļa/nr./nosaukums/bāzes un pašreizējais daudzums/delta/
+  izslēgts/izmaksu delta). Divas loģiskās tabulas dala kolonnas 1-9 (dažādas
+  nozīmes katrā) - platumi izvēlēti pēc PLATĀKĀS vajadzības katrā kolonnā
+  (šaurāks saturs = tikai lieks baltums, ne salasāmības problēma).
+
+**Web UI:**
+- `packages/web/src/components/ProjectEditor.tsx` - jauna poga "Apstiprināt
+  bāzes tāmi" (redzama, kamēr `!baselineLocked`) ar `confirm()` dialogu
+  (tāpat kā citām destruktīvām/neatgriezeniskām darbībām šajā UI) - iestata
+  `baselineApprovedAt`, jāapstiprina ar "Saglabāt" (nesaglabā automātiski,
+  konsekventi ar pārējo redaktora uzvedību). Pēc iesaldēšanas: dzeltens
+  baneris ar iesaldēšanas datumu, sadaļu/pozīciju rediģēšana atspējota
+  (`ItemsTable readOnly`, sadaļas nosaukuma/tāmes numura `input` `disabled`,
+  "Dzēst sadaļu"/"+ Pozīcija"/"+ Sadaļa" pogas paslēptas), "Importēt Excel
+  (pārrakstīt sadaļas)" poga atspējota (imports pārrakstītu tieši bāzi -
+  neatbilst iesaldēšanas semantikai). "Tāme" cilne pēc iesaldēšanas rāda
+  ATVASINĀTO stāvokli (`deriveCurrentState`), nevis bāzi tieši. Jaunas
+  cilnes ("Tāme" / "Izmaiņas (VO)") parādās TIKAI pēc iesaldēšanas - pirms
+  tam UI izskatās un darbojas identiski iepriekšējam (nav VO jēdziena bez
+  bāzes).
+- `packages/web/src/components/VariationOrders.tsx` (jauns fails) - "Izmaiņu"
+  cilnes saturs: forma jaunas VO izveidei (nosaukums/instruēja/datums/
+  pamatojums), VO karšu saraksts (statusa nozīme, finansiālā ietekme,
+  izmaiņu tabula, "+ Izmaiņa"/"Apstiprināt"/"Noraidīt" pogas - pieejamas
+  tikai `status === "proposed"` VO), izmaiņas pievienošanas forma (sadaļas +
+  pozīcijas izvēle no ATVASINĀTĀ pašreizējā stāvokļa - ļauj atsaukties arī uz
+  cita VO jau pievienotu pozīciju - ar daudzuma korekciju VAI "Izslēgt
+  pilnībā" izvēli, VAI jaunas pozīcijas laukiem), un "Mainītās pozīcijas"
+  diff tabula (bāze pret pašreizējo, visam projektam).
+- `packages/web/src/components/ItemsTable.tsx` - jauns `readOnly` props
+  (noklusējums `false`) - atspējo visus `<input>` un paslēpj dzēšanas pogu,
+  nevis paslēpj visu tabulu, lai vērtības paliktu salasāmas tajā pašā
+  izkārtojumā. Izslēgtai pozīcijai (`item.excluded`) rinda dabū
+  `.excluded-row` klasi (pārsvītrojums + samazināts kontrasts, skat. App.css).
+- `packages/web/src/App.css` - jauni stili (`.baseline-banner`, `.tabs`,
+  `.excluded-row`, `.vo-*`).
+
+**Zināms ierobežojums (dokumentēts, apzināti ĀRPUS šī uzdevuma apjoma):** VO
+var pievienot jaunas POZĪCIJAS esošā sadaļā, bet NE jaunas SADAĻAS - reāla
+FIDIC prakse dažkārt ievieš pavisam jaunu darbu bloku ar VO, bet tas šajā
+sesijā nav atbalstīts (lietotājs to nepieprasīja precizējošajos jautājumos;
+nākotnē varētu paplašināt `VariationOrderChange` ar opciju izveidot jaunu
+sadaļu, analoģiski `newItem`).
+
+**Testi:** `packages/core/test/variationOrders.test.ts` (jauns fails, 15
+testi) - `deriveCurrentSections` (daudzuma +/-, klampēšana pie 0, izslēgšana,
+jaunas pozīcijas, atsauce uz cita VO pievienotu pozīciju, bāze netiek
+mutēta), `deriveCurrentState` (tikai apstiprinātās VO ietekmē), VO numerācija/
+izveide, `computeVariationOrderDirectTotalImpact` (daudzuma pieaugums,
+izslēgšana, kumulatīvā secība, nezināms id), `diffAgainstBaseline` (tikai
+mainītās pozīcijas). `test/calculations.test.ts` - 1 jauns tests (`excluded`
+nulle izmaksas). `test/storage.test.ts` - 2 jauni migrācijas testi (v5->v6
+defaulti/saglabāšana), 1 papildināts (v1->current arī pārbauda jaunos
+laukus). `test/excel.test.ts` - 3 jauni testi (bez VO nekas nemainās, delta
+kolonnas ar pareizām vērtībām + pārsvītrojums, IZMAIŅAS lapas reģistrs/diff
+tabula). Kopā **70/70 core testi zaļi** (49 + 21 jauni/papildināti).
+
+**Manuāla pārbaude (Playwright, reāls Chromium, pilna plūsma no nulles):**
+izveidots projekts ar sadaļu un divām pozīcijām, saglabāts, apstiprināta
+bāze (baneris parādās, ievades lauki atspējoti, "+ Sadaļa" pazūd), pārslēgts
+uz "Izmaiņas (VO)" cilni, izveidota VO ar pamatojumu, pievienotas divas
+izmaiņas (daudzuma +20 vienai pozīcijai, pilnīga izslēgšana otrai),
+apstiprināta VO (statusa nozīme kļūst zaļa "Apstiprināts", ietekme aprēķināta
+pareizi), diff tabula rāda pareizas bāzes/pašreizējās/delta vērtības abām
+pozīcijām. Pārslēdzoties atpakaļ uz "Tāme" cilni, daudzums UI atjaunināts
+pareizi (100 -> 120), kopsavilkums pārrēķināts. Eksportēts `.xlsx` fails
+pārbaudīts ar `openpyxl`: `KOPSAVILKUMS`/sadaļas lapa rāda atvasināto
+stāvokli ar pareizām "Bāzes daudzums"/"Delta" kolonnām, izslēgtajai pozīcijai
+`font.strike == True`, jaunā `IZMAIŅAS` lapa satur pareizu reģistru un diff
+tabulu. Konsolē nav kļūdu (`page.on("console"/"pageerror")` tukšs) visā
+plūsmā. `npm run build:web` veiksmīgs (galvenais bundle ~172KB, `exceljs`
+chunk nemainīgs ~950KB atsevišķi).
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 70/70 testi zaļi (21 jauni/papildināti šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs (`tsc --noEmit`), `vite build` veiksmīgs.
+- ✅ Manuāli pārbaudīts pilna plūsma reālā pārlūkā (Playwright): bāzes
+  iesaldēšana, VO izveide/apstiprināšana (daudzuma izmaiņa UN izslēgšana),
+  diff skats, Excel eksports ar jauno lapu un delta kolonnām, nav konsoles
+  kļūdu.
+- ✅ Migrācija (v5 bez jaunajiem laukiem -> v6 ar defaultiem; v5 ar jau
+  iestatītiem laukiem -> saglabāti) testēta.
+- ✅ Trīs lietotāja nosauktie gadījumi atbalstīti: (1) jauna/bāzes tāme -
+  esošā funkcionalitāte + "Apstiprināt bāzes tāmi"; (2) apjomu samazinājums/
+  izslēgšana - `quantityDelta < 0` un/vai `excluded: true`; (3) apjomu
+  palielinājums - `quantityDelta > 0`, arī pavisam jaunu pozīciju pievienošana.

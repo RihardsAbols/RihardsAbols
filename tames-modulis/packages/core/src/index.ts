@@ -8,6 +8,16 @@ export {
   DEFAULT_PROFIT_RATE,
   DEFAULT_DISCOUNT_RATE,
 } from "./models/boq.js";
+export type { VariationOrder, VariationOrderChange, VariationOrderStatus } from "./models/variationOrder.js";
+export type { BoqItemDiffRow, CreateVariationOrderInput } from "./variationOrders/deriveCurrentState.js";
+export {
+  deriveCurrentSections,
+  deriveCurrentState,
+  nextVariationOrderNumber,
+  createVariationOrder,
+  computeVariationOrderDirectTotalImpact,
+  diffAgainstBaseline,
+} from "./variationOrders/deriveCurrentState.js";
 export type { ProjectListEntry, StorageAdapter } from "./storage/StorageAdapter.js";
 // FileSystemStorageAdapter is intentionally NOT re-exported here: it imports
 // node:fs/promises, and this barrel must stay bundleable for the browser

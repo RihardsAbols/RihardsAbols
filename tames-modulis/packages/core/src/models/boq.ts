@@ -1,3 +1,5 @@
+import type { VariationOrder } from "./variationOrder.js";
+
 export interface BoqItem {
   id: string;
   code: string;
@@ -10,6 +12,17 @@ export interface BoqItem {
   unitMaterialsCost: number;
   /** Vienības izmaksa - mehānismi (EUR/vienība). */
   unitMechanismsCost: number;
+  /**
+   * Pozīcija ir pilnībā izslēgta (omitted) ar apstiprinātu tāmes izmaiņu
+   * (Variation Order) - atšķirīgs jēdziens no quantity=0 (kas var nozīmēt arī
+   * "vēl nav sākts, ne atcelts"). Aprēķini (calculateItemCosts) izslēgtai
+   * pozīcijai vienmēr atgriež nulles izmaksas, neatkarīgi no quantity, lai
+   * daudzums paliktu redzams atsaucei (piem. diff skatā), bet neietekmētu
+   * summas. TIKAI atvasinātajā (bāze + apstiprinātās VO) stāvoklī var būt
+   * true - bāzes pozīcijās vienmēr false/undefined, skat.
+   * variationOrders/deriveCurrentState.ts.
+   */
+  excluded?: boolean;
 }
 
 export interface BoqSection {
@@ -62,19 +75,34 @@ export interface BoqState {
   preparedBy: string;
   checkedBy: string;
   sections: BoqSection[];
+  /**
+   * Kad bāzes tāme apstiprināta/iesaldēta (ISO datums), `null` kamēr
+   * projekts vēl "melnrakstā" (sadaļas/pozīcijas brīvi rediģējamas kā līdz
+   * šim). Pēc iesaldēšanas `sections` vairs netiek TIEŠI rediģētas - tā ir
+   * pastāvīga atsauce (bāze), un turpmākās izmaiņas iet caur
+   * `variationOrders`. "Pašreizējais" stāvoklis vienmēr tiek ATVASINĀTS no
+   * `sections` + apstiprinātajām `variationOrders`, nevis glabāts atsevišķi -
+   * skat. variationOrders/deriveCurrentState.ts un CLAUDE.md "Tāmes izmaiņu
+   * (variation orders) vadība".
+   */
+  baselineApprovedAt: string | null;
+  /** Ierosinātās/apstiprinātās/noraidītās tāmes izmaiņas pret bāzi. */
+  variationOrders: VariationOrder[];
   createdAt: string;
   updatedAt: string;
 }
 
-// v5 pievienoja projekta līmeņa contractor/client rekvizītus un
-// preparedBy/checkedBy (Excel eksporta galvenes/paraksta lauki), kā arī
-// sadaļas līmeņa estimateNumber (manuāla tāmes numerācija). v4 pievienoja
-// projekta līmeņa discountRate (atskaitīta no tiešajām izmaksām pirms
-// virsizdevumiem/peļņas). v3 replaced the single `unitPrice` with a darba
-// alga/materiāli/mehānismi split and added overheadRate/profitRate,
-// matching the Līguma tāme format used by the izpildes-akts-validacija skill
-// (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 5;
+// v6 pievienoja baselineApprovedAt (bāzes tāmes iesaldēšanas atzīme) un
+// variationOrders (tāmes izmaiņu/VO saraksts) - skat. models/variationOrder.ts
+// un variationOrders/deriveCurrentState.ts. v5 pievienoja projekta līmeņa
+// contractor/client rekvizītus un preparedBy/checkedBy (Excel eksporta
+// galvenes/paraksta lauki), kā arī sadaļas līmeņa estimateNumber (manuāla
+// tāmes numerācija). v4 pievienoja projekta līmeņa discountRate (atskaitīta
+// no tiešajām izmaksām pirms virsizdevumiem/peļņas). v3 replaced the single
+// `unitPrice` with a darba alga/materiāli/mehānismi split and added
+// overheadRate/profitRate, matching the Līguma tāme format used by the
+// izpildes-akts-validacija skill (see storage/migrations).
+export const CURRENT_SCHEMA_VERSION = 6;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;
@@ -103,6 +131,8 @@ export function createEmptyBoqState(projectId: string, projectName: string): Boq
     preparedBy: "",
     checkedBy: "",
     sections: [],
+    baselineApprovedAt: null,
+    variationOrders: [],
     createdAt: now,
     updatedAt: now,
   };

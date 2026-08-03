@@ -35,6 +35,13 @@ describe("calculateItemCosts", () => {
     );
     expect(costs).toEqual({ laborTotal: 500, materialsTotal: 300, mechanismsTotal: 200, directTotal: 1000 });
   });
+
+  it("returns zero costs for an excluded item regardless of its quantity", () => {
+    const costs = calculateItemCosts(
+      item({ quantity: 100, unitLaborCost: 5, unitMaterialsCost: 3, unitMechanismsCost: 2, excluded: true }),
+    );
+    expect(costs).toEqual({ laborTotal: 0, materialsTotal: 0, mechanismsTotal: 0, directTotal: 0 });
+  });
 });
 
 describe("calculateSectionDirectTotal", () => {

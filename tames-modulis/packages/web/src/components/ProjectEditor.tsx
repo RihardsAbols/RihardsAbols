@@ -1,7 +1,8 @@
-import { summarizeBoq } from "@tames-modulis/core";
+import { deriveCurrentState, summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, CompanyDetails, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ItemsTable } from "./ItemsTable.js";
+import { VariationOrders } from "./VariationOrders.js";
 
 interface ProjectEditorProps {
   adapter: StorageAdapter;
@@ -53,12 +54,14 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"tame" | "izmainas">("tame");
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     setState(null);
     setStatus(null);
+    setActiveTab("tame");
     adapter.load(projectId).then((loaded) => {
       if (!cancelled) setState(loaded);
     });
@@ -71,8 +74,15 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
     return <p>Ielādē projektu...</p>;
   }
 
-  const summary = summarizeBoq(state);
   const update = (updater: (s: BoqState) => BoqState) => setState((prev) => (prev ? updater(prev) : prev));
+
+  // Kad bāze iesaldēta, "Tāme" cilne rāda ATVASINĀTO stāvokli (bāze +
+  // apstiprinātās VO, skat. deriveCurrentState) - sections vairs netiek
+  // tieši rediģētas, turpmākās izmaiņas iet caur "Izmaiņu" cilni (skat.
+  // CLAUDE.md "Tāmes izmaiņu (variation orders) vadība").
+  const baselineLocked = state.baselineApprovedAt !== null;
+  const displayState = baselineLocked ? deriveCurrentState(state) : state;
+  const summary = summarizeBoq(displayState);
 
   const updateItem = (sectionIndex: number, itemIndex: number, patch: Partial<BoqItem>) =>
     update((s) => ({
@@ -135,6 +145,19 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleApproveBaseline = () => {
+    if (
+      !confirm(
+        "Apstiprināt bāzes tāmi? Pēc apstiprināšanas sadaļas un pozīcijas vairs nebūs tieši rediģējamas - " +
+          'turpmākās izmaiņas jāveic caur "Izmaiņas (VO)" cilni. Nospied "Saglabāt", lai izmaiņas saglabātu.',
+      )
+    ) {
+      return;
+    }
+    update((s) => ({ ...s, baselineApprovedAt: new Date().toISOString() }));
+    setStatus('Bāzes tāme iesaldēta. Nospied "Saglabāt", lai saglabātu izmaiņas.');
   };
 
   const handleExport = async () => {
@@ -216,7 +239,11 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button onClick={handleExport} disabled={exporting}>
             {exporting ? "Sagatavo..." : "Eksportēt Excel"}
           </button>
-          <button onClick={() => importFileInputRef.current?.click()} disabled={importing}>
+          <button
+            onClick={() => importFileInputRef.current?.click()}
+            disabled={importing || baselineLocked}
+            title={baselineLocked ? "Bāze iesaldēta - imports vairs nav pieejams, izmaiņas caur \"Izmaiņas (VO)\" cilni" : undefined}
+          >
             {importing ? "Importē..." : "Importēt Excel (pārrakstīt sadaļas)"}
           </button>
           <input
@@ -226,9 +253,16 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
             hidden
             onChange={(e) => void handleImportFileChange(e)}
           />
+          {!baselineLocked && <button onClick={handleApproveBaseline}>Apstiprināt bāzes tāmi</button>}
         </div>
       </div>
       {status && <p className="status">{status}</p>}
+      {baselineLocked && (
+        <p className="baseline-banner">
+          Bāzes tāme iesaldēta {new Date(state.baselineApprovedAt as string).toLocaleDateString("lv-LV")}. Sadaļas/pozīcijas
+          vairs nav tieši rediģējamas - izmaiņas veic "Izmaiņas (VO)" cilnē.
+        </p>
+      )}
 
       <details className="project-details">
         <summary>Projekta rekvizīti (Excel eksportam)</summary>
@@ -316,54 +350,74 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
         </label>
       </div>
 
-      {state.sections.map((section, sectionIndex) => {
-        const sectionSummary = summary.sections[sectionIndex];
-        return (
-          <div className="section" key={section.id}>
-            <div className="section-header">
-              <input
-                className="section-estimate-number"
-                placeholder="Nr."
-                title="Tāmes numurs (piem. 1-1)"
-                value={section.estimateNumber}
-                onChange={(e) => updateSectionEstimateNumber(sectionIndex, e.target.value)}
-              />
-              <input
-                className="section-name"
-                value={section.name}
-                onChange={(e) => updateSectionName(sectionIndex, e.target.value)}
-              />
-              <button onClick={() => removeSection(sectionIndex)}>Dzēst sadaļu</button>
-            </div>
+      {baselineLocked && (
+        <div className="tabs">
+          <button className={activeTab === "tame" ? "tab-active" : ""} onClick={() => setActiveTab("tame")}>
+            Tāme
+          </button>
+          <button className={activeTab === "izmainas" ? "tab-active" : ""} onClick={() => setActiveTab("izmainas")}>
+            Izmaiņas (VO)
+          </button>
+        </div>
+      )}
 
-            <ItemsTable
-              items={section.items}
-              onUpdateItem={(itemIndex, patch) => updateItem(sectionIndex, itemIndex, patch)}
-              onRemoveItem={(itemIndex) => removeItem(sectionIndex, itemIndex)}
-            />
-            <button onClick={() => addItem(sectionIndex)}>+ Pozīcija</button>
+      {(!baselineLocked || activeTab === "tame") && (
+        <>
+          {displayState.sections.map((section, sectionIndex) => {
+            const sectionSummary = summary.sections[sectionIndex];
+            return (
+              <div className="section" key={section.id}>
+                <div className="section-header">
+                  <input
+                    className="section-estimate-number"
+                    placeholder="Nr."
+                    title="Tāmes numurs (piem. 1-1)"
+                    value={section.estimateNumber}
+                    disabled={baselineLocked}
+                    onChange={(e) => updateSectionEstimateNumber(sectionIndex, e.target.value)}
+                  />
+                  <input
+                    className="section-name"
+                    value={section.name}
+                    disabled={baselineLocked}
+                    onChange={(e) => updateSectionName(sectionIndex, e.target.value)}
+                  />
+                  {!baselineLocked && <button onClick={() => removeSection(sectionIndex)}>Dzēst sadaļu</button>}
+                </div>
 
-            <div className="section-summary">
-              Tiešās izmaksas: {eur(sectionSummary.directTotal)}
-              {state.discountRate !== 0 && <> · Atlaide: {eur(sectionSummary.discountAmount)}</>} · Virsizdevumi:{" "}
-              {eur(sectionSummary.overhead)} · Peļņa: {eur(sectionSummary.profit)} · Pavisam:{" "}
-              {eur(sectionSummary.totalWithMarkup)}
-            </div>
+                <ItemsTable
+                  items={section.items}
+                  onUpdateItem={(itemIndex, patch) => updateItem(sectionIndex, itemIndex, patch)}
+                  onRemoveItem={(itemIndex) => removeItem(sectionIndex, itemIndex)}
+                  readOnly={baselineLocked}
+                />
+                {!baselineLocked && <button onClick={() => addItem(sectionIndex)}>+ Pozīcija</button>}
+
+                <div className="section-summary">
+                  Tiešās izmaksas: {eur(sectionSummary.directTotal)}
+                  {state.discountRate !== 0 && <> · Atlaide: {eur(sectionSummary.discountAmount)}</>} · Virsizdevumi:{" "}
+                  {eur(sectionSummary.overhead)} · Peļņa: {eur(sectionSummary.profit)} · Pavisam:{" "}
+                  {eur(sectionSummary.totalWithMarkup)}
+                </div>
+              </div>
+            );
+          })}
+
+          {!baselineLocked && <button onClick={addSection}>+ Sadaļa</button>}
+
+          <div className="project-summary">
+            <p>Tiešās izmaksas: {eur(summary.directTotal)}</p>
+            {state.discountRate !== 0 && <p>Atlaide: -{eur(summary.discountAmount)}</p>}
+            <p>Virsizdevumi: {eur(summary.overhead)}</p>
+            <p>Peļņa: {eur(summary.profit)}</p>
+            <p>Pavisam (bez PVN): {eur(summary.subtotal)}</p>
+            <p>PVN: {eur(summary.vatAmount)}</p>
+            <p className="grand-total">KOPĀ AR PVN: {eur(summary.total)}</p>
           </div>
-        );
-      })}
+        </>
+      )}
 
-      <button onClick={addSection}>+ Sadaļa</button>
-
-      <div className="project-summary">
-        <p>Tiešās izmaksas: {eur(summary.directTotal)}</p>
-        {state.discountRate !== 0 && <p>Atlaide: -{eur(summary.discountAmount)}</p>}
-        <p>Virsizdevumi: {eur(summary.overhead)}</p>
-        <p>Peļņa: {eur(summary.profit)}</p>
-        <p>Pavisam (bez PVN): {eur(summary.subtotal)}</p>
-        <p>PVN: {eur(summary.vatAmount)}</p>
-        <p className="grand-total">KOPĀ AR PVN: {eur(summary.total)}</p>
-      </div>
+      {baselineLocked && activeTab === "izmainas" && <VariationOrders state={state} onUpdate={update} />}
     </div>
   );
 }
