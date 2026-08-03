@@ -1,11 +1,7 @@
-import {
-  computeExecutedToDate,
-  computeRemainingQuantity,
-  createExecutionRecord,
-  deriveCurrentSections,
-} from "@tames-modulis/core";
+import { createExecutionRecord, deriveCurrentSections } from "@tames-modulis/core";
 import type { BoqState, ExecutionRecordEntry } from "@tames-modulis/core";
 import { useState } from "react";
+import { ExecutionEntryTable } from "./ExecutionEntryTable.js";
 
 interface ExecutionRecordsProps {
   state: BoqState;
@@ -35,10 +31,11 @@ function emptyRecordForm(): RecordFormState {
  * `state.executionRecords` (skat. CLAUDE.md "Tāmes izmaiņu (Variation Order)
  * vadība") - šeit netiek glabāts atsevišķi.
  *
- * Aktā ievadītās pozīcijas NAV virtualizētas (skat. ItemsTable.tsx
- * virtualizāciju salīdzinājumam) - apzināts vienkāršojums šai pirmajai
- * versijai; ļoti lielam projektam (tūkstošiem pozīciju) šī forma varētu
- * palēnināties, tāpat kā ItemsTable pirms Sesijas 13 virtualizācijas.
+ * Aktā ievadītās pozīcijas ir virtualizētas pa sadaļām
+ * (`ExecutionEntryTable.tsx`, tā pati tehnika kā `ItemsTable.tsx`) - ļoti
+ * lielam projektam (tūkstošiem pozīciju, skat. PROGRESS.md Sesija 12) šī
+ * forma citādi palēninātos tāpat, kā `ItemsTable` pirms Sesijas 13
+ * virtualizācijas.
  */
 export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
   const [isCreating, setIsCreating] = useState(false);
@@ -100,44 +97,12 @@ export function ExecutionRecords({ state, onUpdate }: ExecutionRecordsProps) {
           {currentSections.map((section) => (
             <div className="execution-entry-section" key={section.id}>
               <h4>{section.name}</h4>
-              <table className="execution-entry-table">
-                <thead>
-                  <tr>
-                    <th>Nr.</th>
-                    <th>Nosaukums</th>
-                    <th>Mērv.</th>
-                    <th>Pašreizējais</th>
-                    <th>Izpildīts līdz šim</th>
-                    <th>Šajā periodā</th>
-                    <th>Atlikums uz nākamo periodu</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {section.items.map((item) => {
-                    const priorExecuted = computeExecutedToDate(state.executionRecords, item.id);
-                    const thisPeriod = Number(entryQuantities[item.id] || "0");
-                    const remaining = computeRemainingQuantity(item.quantity, priorExecuted + thisPeriod);
-                    return (
-                      <tr key={item.id} className={remaining < 0 ? "over-executed" : undefined}>
-                        <td>{item.code}</td>
-                        <td>{item.description}</td>
-                        <td>{item.unit}</td>
-                        <td>{item.quantity}</td>
-                        <td>{priorExecuted}</td>
-                        <td>
-                          <input
-                            type="number"
-                            className="number-input"
-                            value={entryQuantities[item.id] ?? ""}
-                            onChange={(e) => setEntryQuantities((q) => ({ ...q, [item.id]: e.target.value }))}
-                          />
-                        </td>
-                        <td>{remaining}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <ExecutionEntryTable
+                items={section.items}
+                executionRecords={state.executionRecords}
+                entryQuantities={entryQuantities}
+                onChangeQuantity={(itemId, value) => setEntryQuantities((q) => ({ ...q, [itemId]: value }))}
+              />
             </div>
           ))}
 

@@ -149,6 +149,10 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
 - `src/components/ExecutionRecords.tsx` — "Izpildes akti" cilnes saturs
   (jauna izpildes akta ievade pa sadaļām ar izpildīts/atlikums kolonnām,
   aktu vēsture) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+- `src/components/ExecutionEntryTable.tsx` — virtualizēta pozīciju tabula
+  izpildes akta ievadei (tā pati tehnika kā `ItemsTable.tsx`, skat.
+  "Pozīciju tabulas virtualizācija" un "Tāmes izmaiņu (Variation Order)
+  vadība" zemāk). Lieto `ExecutionRecords.tsx` katrai sadaļai.
 - `src/components/ItemsTable.tsx` — sadaļas pozīciju tabula ar rindu
   virtualizāciju (skat. "Pozīciju tabulas virtualizācija" zemāk). Lieto
   `ProjectEditor.tsx` katrai sadaļai. `readOnly` props atspējo ievadi pēc
@@ -702,12 +706,20 @@ formulējumu. Rindas ar `atlikums < 0` vizuāli izceltas (`.over-executed`).
 Zem tam aktu vēstures tabula (periods/datums/apstiprinātājs/pozīciju
 skaits/kopā izpildīts šajā periodā).
 
-**Zināms ierobežojums (apzināti, laika trūkuma dēļ šai sesijai):** akta
-ievades tabula NAV virtualizēta (skat. "Pozīciju tabulas virtualizācija"
-zemāk) — reālam projektam ar tūkstošiem pozīciju (skat. Sesija 12, 12876
-pozīcijas) šī forma varētu palēnināties tāpat, kā `ItemsTable` pirms
-Sesijas 13 virtualizācijas. Nākotnes uzlabojums, ja reāla lietošana to
-parādīs kā problēmu.
+**Akta ievades tabula ir virtualizēta** (`ExecutionEntryTable.tsx`, jauns
+komponents) — lietotājs pieprasīja to uzreiz (nevis pēc reālas problēmas,
+atšķirībā no `ItemsTable` vēstures Sesijā 12/13), jo šai tabulai ir
+TIEŠI TĀDS PATS "viena rinda uz pozīciju" izkārtojums, kas reālam
+projektam (skat. Sesija 12, 12876 pozīcijas) būtu tikpat lēns bez
+virtualizācijas. Lieto TIEŠI TO PAŠU tehniku/konstantes kā `ItemsTable.tsx`
+(`ROW_HEIGHT`/`OVERSCAN`/scroll-based windowing ar augšas/apakšas "spacer"
+rindām) - atsevišķs komponents, nevis `ItemsTable` paplašinājums, jo
+kolonnu kopa/nozīme atšķiras (izpildes/atlikuma kolonnas, nevis
+rediģējamas izmaksu kolonnas). **Pārbaudīts (Playwright, 300 pozīciju
+sintētisks projekts, ievadīts tieši IndexedDB, apejot UI):** DOM renderē
+tikai ~31 rindu (nevis 300), ritināšana pareizi maina redzamās rindas,
+ievadot daudzumu konkrētā redzamā rindā, "Atlikums" pareizi pārrēķinās
+(piem. 100 - 30 = 70), un saglabātais akts satur pareizo vērtību.
 
 **Atlikuma rādīšana VO izveidē** (`VariationOrders.tsx`): izvēloties esošu
 pozīciju izmaiņas pievienošanas formā, parādās informācijas rinda

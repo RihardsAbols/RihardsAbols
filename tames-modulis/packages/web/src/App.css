@@ -535,6 +535,23 @@ body {
   margin-bottom: 0.25rem;
 }
 
+.execution-entry-table-scroll {
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+  border: 1px solid #eee;
+}
+
+.execution-entry-table-scroll .execution-entry-table {
+  margin-bottom: 0;
+}
+
+.execution-entry-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+
 .execution-entry-table,
 .execution-history-table {
   width: 100%;

@@ -1155,3 +1155,23 @@ chunk nemainīgs).
 - ✅ Reāla Excel eksporta kļūda (index-based sadaļu saskaņojums) atrasta un
   izlabota PIRMS lietotāja to būtu ieraudzījis reālā eksportā - pārbaudīta
   ar mērķtiecīgu testu.
+
+**Papildinājums tajā pašā sesijā - izpildes akta ievades virtualizācija:**
+lietotājs pieprasīja virtualizēt izpildes akta ievades tabulu lielam
+projektam UZREIZ (nevis gaidīt reālu problēmu, atšķirībā no `ItemsTable`
+vēstures Sesijā 12/13). Izveidots `packages/web/src/components/
+ExecutionEntryTable.tsx` - lieto TIEŠI TO PAŠU virtualizācijas tehniku/
+konstantes kā `ItemsTable.tsx` (scroll-based windowing, `ROW_HEIGHT`/
+`OVERSCAN`, augšas/apakšas "spacer" rindas), atsevišķs komponents (nevis
+`ItemsTable` paplašinājums), jo kolonnu nozīme atšķiras. `ExecutionRecords.tsx`
+tagad renderē `<ExecutionEntryTable>` katrai sadaļai, nevis pilnu tabulu
+tieši.
+
+**Manuāli pārbaudīts (Playwright):** sintētisks 300 pozīciju projekts
+ievadīts tieši IndexedDB (apejot UI, ātrāk par 300 "+ Pozīcija" klikšķiem) -
+DOM renderē tikai ~31 rindu (nevis 300), ritinot mainās redzamās rindas
+(pirmā redzamā rinda "1" -> "83"), ievadot daudzumu konkrētā redzamā rindā
+("Pozīcija 84"), "Atlikums" pareizi pārrēķinās (100 - 30 = 70), un
+saglabātais akts vēsturē satur pareizo kopējo summu (30). Core testi
+(82/82), typecheck un `vite build` (abi tīri) palaisti pēc šī papildinājuma
+bez izmaiņām nepieciešamības.
