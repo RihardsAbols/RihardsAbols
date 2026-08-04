@@ -55,26 +55,50 @@ export const KNOWN_UNITS = new Set([
   "ha",
   "ēka",
   "vieta",
+  "vietas",
   "pāris",
   "kompl",
   "iepak",
   "k-ts",
   "t.m",
   "maš/st",
+  "mēn",
+  "ievads",
 ]);
 
 /**
  * Normalizes a raw mērvienība cell value for comparison against KNOWN_UNITS.
  * Real files vary the same unit with trailing punctuation ("kpl.", "gb,")
- * and Unicode superscripts ("m²", "m³") rather than plain digits - normalize
- * those away instead of listing every variant as a separate KNOWN_UNITS entry.
+ * and Unicode superscripts ("m²", "m³") rather than plain digits, and (a real
+ * bilingual LV/EN Bill of Quantities file) embedded line breaks within a
+ * single cell ("kpl./\nset") - normalize those away instead of listing every
+ * variant as a separate KNOWN_UNITS entry.
  */
 export function normalizeUnit(raw: string): string {
   return raw
     .normalize("NFC")
     .trim()
     .toLowerCase()
+    .replace(/\s+/g, " ")
     .replace(/[.,]+$/, "")
     .replace(/²/g, "2")
     .replace(/³/g, "3");
+}
+
+/**
+ * Whether a raw mērvienība cell value is a known unit, after normalizeUnit.
+ * A real bilingual file pairs the Latvian unit with an English translation
+ * separated by "/" ("vieta/place", "vietas / place") - checked as a fallback
+ * ONLY after the full string fails, so an already-known unit that happens to
+ * contain a literal "/" itself ("maš/st") still matches on the first check
+ * and never reaches the split.
+ */
+export function isKnownUnit(raw: string): boolean {
+  const full = normalizeUnit(raw);
+  if (KNOWN_UNITS.has(full)) return true;
+  if (full.includes("/")) {
+    const firstPart = normalizeUnit(full.split("/")[0]);
+    if (KNOWN_UNITS.has(firstPart)) return true;
+  }
+  return false;
 }

@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import type { BoqSection } from "../models/boq.js";
 import type { ExecutionRecordEntry } from "../models/executionRecord.js";
 import { cellNumber, cellText } from "./cellValue.js";
-import { KNOWN_UNITS, normalizeUnit } from "./columns.js";
+import { isKnownUnit } from "./columns.js";
 import { detectExecutionActColumns } from "./headerDetection.js";
 
 export interface ParsedExecutionActRow {
@@ -46,7 +46,7 @@ export function parseExecutionActWorkbook(workbook: ExcelJS.Workbook): ParsedExe
     const rows: ParsedExecutionActRow[] = [];
     sheet.eachRow((row) => {
       const unitText = cellText(row.getCell(columns.unit)).trim();
-      if (!KNOWN_UNITS.has(normalizeUnit(unitText))) return;
+      if (!isKnownUnit(unitText)) return;
 
       const executedQuantity = cellNumber(row.getCell(columns.executedThisPeriod));
       if (executedQuantity === 0) return;

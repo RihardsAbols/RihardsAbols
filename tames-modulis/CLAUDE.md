@@ -66,12 +66,17 @@ Npm workspace ar divām pakotnēm:
   `src/index.ts` barela** (skat. zemāk) — pieejams caur
   `@tames-modulis/core/excel` (`src/excel/index.ts`).
   - `columns.ts` — `TAME_COLUMNS` (kolonnu karte, ko **raksta** eksports),
-    `KNOWN_UNITS` (kanoniskais mērvienību saraksts) un `normalizeUnit`
-    (attīra reālu failu variantus — galotnes punktu/komatu, Unicode
-    augšraksta cipariem `m²`/`m³` — pirms salīdzināšanas ar `KNOWN_UNITS`).
-    Sarakstu papildina gan `izpildes-akts-validacija` skill dokumentācija,
-    gan reāla 53-lapu Līguma tāmes faila pilna mērvienību apsekošana
-    (skat. PROGRESS.md, Sesija 12).
+    `KNOWN_UNITS` (kanoniskais mērvienību saraksts), `normalizeUnit`
+    (attīra reālu failu variantus — galotnes punktu/komatu, iekļautus rindu
+    pārtraukumus, Unicode augšraksta cipariem `m²`/`m³` — pirms
+    salīdzināšanas ar `KNOWN_UNITS`) un `isKnownUnit` (pilns-virknes
+    pārbaude, TAD, ja neizdodas UN virknē ir "/", daļas pirms pirmā "/"
+    pārbaude — atbalsta divvalodu LV/EN mērvienības kā "vieta/place" bez
+    riska jau esošajam vienas-virknes-ar-"/" `maš/st`, skat. "Bilingvāla
+    (LV/EN) tāmes faila imports (Sesija 25)" zemāk). Sarakstu papildina gan
+    `izpildes-akts-validacija` skill dokumentācija, gan reāla 53-lapu Līguma
+    tāmes faila pilna mērvienību apsekošana (skat. PROGRESS.md, Sesija 12),
+    gan reāla divvalodu C2-10 faila apsekošana (Sesija 25).
   - `headerDetection.ts` — `detectImportColumns`: **importam** kolonnas
     atrod pēc galvenes teksta (nevis fiksētas pozīcijas kā `TAME_COLUMNS`,
     ko lieto tikai eksports) — skat. "Kolonnu noteikšana pēc galvenes
@@ -345,6 +350,52 @@ SKILL.md dokumentācijā nebija minēti: `pāris`, `vieta`, `ltr`, `objekts`,
 `normalizeUnit` apstrādā galotnes punktus/komatus un Unicode
 augšraksta ciparus (`m²`→`m2`, `m³`→`m3`) tā vietā, lai katru variantu
 uzskaitītu atsevišķi.
+
+### Bilingvāla (LV/EN) tāmes faila imports (Sesija 25)
+
+Reāla projekta faila (C2-10, "Bill of Quantities", 67 lapas) pārbaude atklāja,
+ka imports atgriež **0 sadaļu, 0 pozīciju** — pilnīga neveiksme, nevis daļēja
+kā Sesijās 12/21. Cēlonis: šis fails ir divvalodu (LV/EN) — katra galvene
+teksta veidā "Latviski/English", **arī rindas numura kolonna**: "N.p.k./No",
+NEVIS "Nr. p.k." kā visos iepriekš redzētajos failos (trūkst burta "r").
+`headerDetection.ts`'s `nrPk` matcheris bija VIENĪGAIS lauks, kas joprojām
+lietoja STINGRU sakritību (`key === "nrpk"`) tā vietā, lai lietotu
+`.includes(...)` kā pārējie 6 lauki — normalizētā galvene "N.p.k./No" kļūst
+par "npkno" (ar pievienoto angļu "No"), kas NEKAD nesakristu ar "nrpk" pat
+citādi identiskam failam.
+
+**Labojums:** `nrPk` abos matcher'os (`FIELD_MATCHERS` un
+`EXECUTION_ACT_FIELD_MATCHERS`) pārrakstīts uz `key.startsWith("nrpk") ||
+key.startsWith("npk")` — `startsWith`, nevis brīvs `.includes`, lai
+neriskētu sakrist ar "npk" kaut kur cita teksta vidū.
+
+**Otrs, mazāks atradums tajā pašā failā:** mērvienības arī rakstītas
+divvalodu formā ar "/" atdalītāju ("vieta/place", "vietas / place"), dažkārt
+ar iekļautu rindas pārtraukumu vienā šūnā ("kpl./\nset"). Tā kā `maš/st` jau
+ir VIENS KNOWN_UNITS ieraksts AR burtisku "/" (nevis divvalodu atdalītāju),
+vienkārša "sadalīt pēc '/' vienmēr" pieeja to salauztu. Risinājums — jauna
+`isKnownUnit(raw)` funkcija (`columns.ts`, eksportēta arī no
+`excel/index.ts`) abu esošo tiešo izsaukuma vietu (`import.ts`,
+`executionActImport.ts`) vietā: vispirms pārbauda PILNU normalizēto virkni
+pret `KNOWN_UNITS` (tā "maš/st" sakrīt uzreiz, nekad nesasniedzot
+sadalīšanu), TIKAI TAD, ja tas neizdodas UN virknē ir "/", pārbauda daļu
+PIRMS pirmā "/" atsevišķi. `normalizeUnit` papildus sabrūk iekļautos rindu
+pārtraukumus vienā atstarpē (`\s+` -> `" "`), lai "kpl./\nset" sadalīšanas
+pirmā daļa ("kpl.") paliktu tīra. `KNOWN_UNITS` papildināts ar reāli
+novērotiem jauniem variantiem: `mēn` (mēnesis), `vietas` (daudzskaitlis no
+jau esošā `vieta`), `ievads` (cauruļu ievads).
+
+**Pārbaudīts pret REĀLO C2-10 failu** (pagaidu skripts, izdzēsts pēc
+lietošanas, tāpat kā iepriekšējo sesiju konvencija): pēc labojuma **63 no 67
+lapām atpazītas** (4 neatpazītas — `KO`/`KS` ir leģitīmas kopsavilkuma lapas,
+pareizi izlaistas; `A General requirements`/`B Day works` lieto PILNĪBĀ
+ANGĻU (ne divvalodu) galvenes un `B Day works` arī pavisam citu kolonnu
+struktūru — apzināti ĀRPUS šī labojuma apjoma, skat. PROGRESS.md Sesija 25
+par to kā atsevišķu, vēl neapstiprinātu turpmāko soli), **3708 pozīcijas**
+importētas. `2-10` lapas (lietotāja konkrētais projekts) aprēķinātā tiešo
+izmaksu summa (`calculateSectionDirectTotal`) sakrita ar pašas lapas "Izmaksas
+kopā" rindu LĪDZ SANTĪMAM (53500.10999999999 abās) — tā pati pārbaudes
+metodoloģija, kas Sesijā 12 (DEM lapa) un Sesijā 20.
 
 ### Pozīciju tabulas virtualizācija (UI veiktspēja)
 

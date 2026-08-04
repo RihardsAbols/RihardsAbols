@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { createEmptyBoqState, type BoqItem, type BoqSection, type BoqState } from "../models/boq.js";
 import { cellNumber, cellText } from "./cellValue.js";
-import { KNOWN_UNITS, normalizeUnit } from "./columns.js";
+import { isKnownUnit } from "./columns.js";
 import { detectImportColumns } from "./headerDetection.js";
 
 /**
@@ -47,7 +47,7 @@ export function importBoqFromWorkbook(
 
     sheet.eachRow((row) => {
       const unitText = cellText(row.getCell(columns.unit)).trim();
-      if (!KNOWN_UNITS.has(normalizeUnit(unitText))) {
+      if (!isKnownUnit(unitText)) {
         return;
       }
 

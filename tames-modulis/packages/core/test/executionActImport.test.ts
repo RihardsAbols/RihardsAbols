@@ -79,6 +79,17 @@ describe("detectExecutionActColumns", () => {
     sheet.getCell(1, 1).value = "Satura rādītājs";
     expect(detectExecutionActColumns(sheet)).toBeNull();
   });
+
+  it("finds the nrPk column when the header reads 'N.p.k./No' (bilingual LV/EN file, no 'r')", () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("2-10");
+    sheet.getCell(3, 1).value = "N.p.k./No";
+    sheet.getCell(3, 3).value = "Būvdarbu nosaukums/Description of the construction work";
+    sheet.getCell(3, 5).value = "Mērvienība/ Unit";
+    sheet.getCell(3, 33).value = "Izpildīts atskaites periodā";
+
+    expect(detectExecutionActColumns(sheet)).toEqual({ nrPk: 1, name: 3, unit: 5, executedThisPeriod: 33 });
+  });
 });
 
 describe("parseExecutionActWorkbook", () => {

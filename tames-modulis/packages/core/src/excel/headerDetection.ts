@@ -19,7 +19,14 @@ function normalizeHeaderKey(text: string): string {
 }
 
 const FIELD_MATCHERS: Record<keyof DetectedImportColumns, (key: string) => boolean> = {
-  nrPk: (key) => key === "nrpk",
+  // startsWith, not exact "nrpk" - a real bilingual (LV/EN) file's header
+  // "N.p.k./No" normalizes to "npkno" (missing the "r" of "Nr.", plus the
+  // trailing English "No"), which an exact match rejects entirely (see
+  // headerDetection.test.ts). "nrpk"/"npk" prefixes cover both the
+  // Latvian-only and bilingual forms without loosening this into a bare
+  // .includes(), which would also match "npk" appearing deeper in unrelated
+  // header text.
+  nrPk: (key) => key.startsWith("nrpk") || key.startsWith("npk"),
   // Adjacent substring, not "includes both words anywhere" - a real sheet's
   // instructional caption "(būvdarbu veids vai konstruktīvā elementa
   // nosaukums)" contains both words too, just not next to each other, and a
@@ -107,7 +114,8 @@ export interface DetectedExecutionActColumns {
 }
 
 const EXECUTION_ACT_FIELD_MATCHERS: Record<keyof DetectedExecutionActColumns, (key: string) => boolean> = {
-  nrPk: (key) => key === "nrpk",
+  // Same startsWith relaxation as FIELD_MATCHERS.nrPk above, for bilingual akts files.
+  nrPk: (key) => key.startsWith("nrpk") || key.startsWith("npk"),
   name: (key) => key.includes("būvdarbunosaukum"),
   unit: (key) => key.includes("mērvien"),
   executedThisPeriod: (key) => key.includes("izpildītsatskaitesperiodā"),

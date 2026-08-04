@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { summarizeBoq } from "../src/calculations/boq.js";
-import { KNOWN_UNITS, normalizeUnit, TAME_COLUMNS } from "../src/excel/columns.js";
+import { isKnownUnit, KNOWN_UNITS, normalizeUnit, TAME_COLUMNS } from "../src/excel/columns.js";
 import { exportBoqToBuffer, exportBoqToWorkbook } from "../src/excel/export.js";
 import { importBoqFromBuffer, importBoqFromWorkbook } from "../src/excel/import.js";
 import { createEmptyBoqState } from "../src/models/boq.js";
@@ -79,6 +79,43 @@ describe("normalizeUnit", () => {
     for (const raw of ["kpl.", "gb,", "gab.", "m²", "m³", "M2", "GB"]) {
       expect(KNOWN_UNITS.has(normalizeUnit(raw))).toBe(true);
     }
+  });
+
+  it("collapses embedded line breaks to a single space", () => {
+    expect(normalizeUnit("kpl./\nset")).toBe("kpl./ set");
+  });
+});
+
+describe("isKnownUnit", () => {
+  it("matches a plain KNOWN_UNITS entry directly", () => {
+    expect(isKnownUnit("kpl.")).toBe(true);
+    expect(isKnownUnit("m²")).toBe(true);
+  });
+
+  it("matches a bilingual LV/EN unit ('vieta/place') via the part before the slash", () => {
+    // Real bilingual (LV/EN) Bill of Quantities file: mērvienība cells pair
+    // the Latvian unit with an English translation ("vieta/place",
+    // "vietas / place") - the English suffix isn't itself a KNOWN_UNITS
+    // entry, so only the LV part (before "/") is checked.
+    expect(isKnownUnit("vieta/place")).toBe(true);
+    expect(isKnownUnit("vietas / place")).toBe(true);
+    expect(isKnownUnit("vietas / places")).toBe(true);
+  });
+
+  it("still matches 'maš/st' as a whole unit, not split on its literal slash", () => {
+    // maš/st ("mašīnstundas") is itself a single KNOWN_UNITS entry containing
+    // a "/" - the full-string check must succeed before the slash-fallback is
+    // ever tried, so it isn't misread as unit "maš".
+    expect(isKnownUnit("maš/st")).toBe(true);
+  });
+
+  it("matches a unit with an embedded line break before the slash ('kpl./\\nset')", () => {
+    expect(isKnownUnit("kpl./\nset")).toBe(true);
+  });
+
+  it("returns false for a genuinely unknown unit, bilingual or not", () => {
+    expect(isKnownUnit("skat./see 3-2")).toBe(false);
+    expect(isKnownUnit("nezināms")).toBe(false);
   });
 });
 
@@ -388,6 +425,47 @@ describe("importBoqFromWorkbook against hand-built sheets (real-world structure)
     const state = importBoqFromWorkbook(workbook, "proj-z", "Projekts");
 
     expect(state.sections[0].items).toHaveLength(unitVariants.length);
+  });
+
+  it("reads a bilingual (LV/EN) Bill of Quantities sheet whose Nr.p.k. header is 'N.p.k./No' (missing the 'r')", () => {
+    // Reproduces a real bilingual construction BOQ file (C2-10): every
+    // header is "Latvian/English", including the row-number column, which
+    // reads "N.p.k./No" - NOT "Nr. p.k." like every previously-seen file.
+    // An exact-match nrPk matcher rejected this on every one of that file's
+    // 63 item sheets (0 sections imported) until relaxed to a prefix check.
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("2-10");
+
+    sheet.getCell(11, 1).value = "N.p.k./No";
+    sheet.getCell(11, 3).value = "Būvdarbu nosaukums/Description of the construction work";
+    sheet.getCell(11, 4).value = "Mērvienība/ Unit";
+    sheet.getCell(11, 5).value = "Daudzums/ Quantity";
+    sheet.getCell(11, 8).value = "darba alga/ salary";
+    sheet.getCell(11, 9).value = "būvizstrādājumi/ materials";
+    sheet.getCell(11, 10).value = "mehānismi/ mechanisms";
+
+    sheet.getCell(14, 1).value = 1;
+    sheet.getCell(14, 3).value = "Pieslēgums pie AVK ierīces/ Connection to AVK device";
+    sheet.getCell(14, 4).value = "vieta/place";
+    sheet.getCell(14, 5).value = 9;
+    sheet.getCell(14, 8).value = 5.18;
+    sheet.getCell(14, 9).value = 9.64;
+    sheet.getCell(14, 10).value = 0;
+
+    const state = importBoqFromWorkbook(workbook, "proj-c210", "C2-10");
+
+    expect(state.sections).toHaveLength(1);
+    expect(state.sections[0].items).toEqual([
+      expect.objectContaining({
+        code: "1",
+        description: "Pieslēgums pie AVK ierīces/ Connection to AVK device",
+        unit: "vieta/place",
+        quantity: 9,
+        unitLaborCost: 5.18,
+        unitMaterialsCost: 9.64,
+        unitMechanismsCost: 0,
+      }),
+    ]);
   });
 });
 

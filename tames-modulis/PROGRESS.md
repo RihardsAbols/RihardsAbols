@@ -1504,18 +1504,100 @@ sesijās.
   plūsma, persistence pēc lapas pārlādes, regresija projektam bez VO,
   konsolē nav kļūdu.
 
+## Sesija 25: Bilingvāla (LV/EN) C2-10 tāmes faila imports — ✅ Solis 1 pabeigts
+
+**Uzdevums:** lietotājs iesniedza jaunu reālu tāmes failu (C2-10, "Bill of
+Quantities", 67 lapas, LV/EN divvalodu formāts) — "pārbaudi vai tā korekti
+uzlādējas un sader ar jau uzprogrammēto, ja kas jāpielabo, tad izstrādā
+plānu un pakāpeniski veiksim precizējumus". Vispirms izpētīts konkrētais
+faila stāvoklis (nevis pieņemts uzdevums bez apstiprinājuma, skat.
+PROGRESS.md ieteikumu iepriekšējā sesijā) — lietotājs apstiprināja sākt ar
+Soli 1 (skat. zemāk plānu).
+
+**Atklājums:** imports atgrieza **0 sadaļu, 0 pozīciju** — pilnīga
+neveiksme. Cēlonis: šis fails ir divvalodu — VISAS galvenes, ieskaitot
+rindas numura kolonnu, ir "Latviski/English" formātā: "N.p.k./No", NEVIS
+"Nr. p.k." kā visos iepriekš redzētajos failos (trūkst "r"). `nrPk`
+matcheris bija vienīgais no 7 laukiem, kas joprojām lietoja STINGRU
+sakritību (`key === "nrpk"`) tā vietā, lai lietotu `.includes(...)`, tāpēc
+nekad nesakrita. Pilns tehniskais apraksts un labojums:
+`tames-modulis/CLAUDE.md` "Bilingvāla (LV/EN) tāmes faila imports (Sesija
+25)".
+
+**Implementēts (`packages/core`, `packages/web` netika skarts):**
+- `src/excel/headerDetection.ts` — `nrPk` matcheris (abos, `FIELD_MATCHERS`
+  UN `EXECUTION_ACT_FIELD_MATCHERS`) pārrakstīts uz
+  `key.startsWith("nrpk") || key.startsWith("npk")`.
+- `src/excel/columns.ts` — jauna `isKnownUnit(raw)` funkcija (eksportēta arī
+  no `excel/index.ts`), atbalsta divvalodu "/"-atdalītas mērvienības
+  ("vieta/place") bez riska jau esošajam `maš/st` (pilna virkne pārbaudīta
+  VISPIRMS). `KNOWN_UNITS` papildināts ar `mēn`, `vietas`, `ievads`.
+  `normalizeUnit` papildus sabrūk iekļautos rindu pārtraukumus vienā
+  atstarpē.
+- `src/excel/import.ts`, `src/excel/executionActImport.ts` — abas
+  izsaukuma vietas (`KNOWN_UNITS.has(normalizeUnit(...))`) aizstātas ar
+  `isKnownUnit(...)`.
+
+**Testi:** `test/excel.test.ts` — 7 jauni (`isKnownUnit` bilingvālam
+gadījumam/`maš/st` regresijai/iekļautam rindu pārtraukumam/nezināmai
+vērtībai, `normalizeUnit` rindu pārtraukuma sabrukšanai, pilns
+`importBoqFromWorkbook` tests ar "N.p.k./No" galveni + "vieta/place"
+mērvienību, reproducējot tieši reālā faila struktūru).
+`test/executionActImport.test.ts` — 1 jauns (`detectExecutionActColumns` ar
+"N.p.k./No" galveni). Kopā **123/123 core testi zaļi** (115 + 8 jauni).
+
+**Manuāli pārbaudīts pret REĀLO C2-10 failu** (pagaidu skripti, izdzēsti pēc
+lietošanas): pēc labojuma **63 no 67 lapām atpazītas**, **3708 pozīcijas**
+importētas. 4 lapas paliek neatpazītas — `KO`/`KS` ir leģitīmas
+kopsavilkuma lapas (tāpat kā mūsu pašu `KOPSAVILKUMS`), pareizi izlaistas;
+`A General requirements`/`B Day works` lieto PILNĪBĀ ANGĻU (ne divvalodu)
+galvenes, un `B Day works` arī pavisam citu kolonnu struktūru (nav darba
+algas/materiālu/mehānismu sadalījuma, tikai Likme×Daudzums=Summa) — ārpus
+šī labojuma apjoma, skat. zemāk "Solis 2".
+
+**2-10 lapas (lietotāja konkrētais projekts) aprēķinātā tiešo izmaksu
+summa (`calculateSectionDirectTotal`, izsaukta reālajam importētajam
+stāvoklim, ne tikai sintētiskam testam) sakrita ar pašas lapas "Izmaksas
+kopā" rindu LĪDZ SANTĪMAM** (53500.10999999999 abās) — tā pati pārbaudes
+metodoloģija, kas Sesijā 12 (DEM lapa) un Sesijā 20. Pilna projekta (63
+sadaļas) aprēķinātā tiešo izmaksu summa: 25766510.57 €.
+
+**Definition of Done — Solis 1 pārbaudīts:**
+- ✅ Core: 123/123 testi zaļi (8 jauni šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs.
+- ✅ Manuāli pārbaudīts pret REĀLO C2-10 failu — 0/67 -> 63/67 lapas, 0 ->
+  3708 pozīcijas, 2-10 lapas summa sakrīt ar avota faila summu līdz
+  santīmam.
+- ⚠️ Solis 2 (NAV vēl sākts, JĀPAJAUTĀ lietotājam): "A General
+  requirements"/"B Day works" lapas (angļu-only galvenes, "B Day works"
+  pavisam cita kolonnu struktūra) joprojām netiek importētas — var būt
+  reāla līguma summas daļa (FIDIC Preliminaries/Dayworks), kas klusi tiek
+  pazaudēta.
+- ⚠️ Manuālā UI pārbaude (Playwright, imports caur reālo pārlūka plūsmu, ne
+  tikai core funkciju tiešs izsaukums) šai sesijai vēl NAV veikta.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-Sesijas 20-24 apstiprinātie uzdevumi ir pabeigti. Šobrīd NAV zināma
-neapstiprināta kandidāta.
+**Solis 2 no Sesijas 25 (JĀPAJAUTĀ lietotājam, nevis jāpieņem):** lemt, ko
+darīt ar "A General requirements"/"B Day works" lapām (skat. augšā) —
+importēt ar atsevišķu angļu-galvenes atpazīšanu un/vai vienkāršotu kolonnu
+karti "B Day works" gadījumam, vai apzināti atstāt ārpus apjoma šai
+versijai.
 
-**Apzināti ārpus Sesijas 24 apjoma (varētu būt nākamais kandidāts, JĀPAJAUTĀ
-lietotājam, nevis jāpieņem):** Excel eksporta paplašināšana ar tām pašām
-atvasinātās numerācijas/VO-delta kolonnām, ko Sesija 24 pievienoja TIKAI
-web UI; `VariationOrders.tsx` VO kartes izmaiņu tabulas atjaunināšana, lai
-arī tā rādītu atvasināto displayCode.
+**Jauna, lielāka funkcionalitātes ideja no lietotāja (vēl nav apspriesta/
+projektēta):** "Pasūtītāja rezerve" — mehānisms, kas uzkrātu VO ceļā
+izslēgto/daļēji izslēgto darbu vērtību, ko vēlāk varētu izmantot jaunu
+papildu darbu segšanai. Vajadzīga sava projektēšanas diskusija (FIDIC
+"Provisional Sum" stila jēdziens, statusa plūsma, UI/Excel atspoguļojums)
+PIRMS ieviešanas — lietotājam pašam apstiprināts, ka tas apspriežams pēc
+C2-10 importa labojuma.
+
+**Joprojām apzināti ārpus apjoma (no Sesijas 24):** Excel eksporta
+paplašināšana ar tām pašām atvasinātās numerācijas/VO-delta kolonnām, ko
+Sesija 24 pievienoja TIKAI web UI; `VariationOrders.tsx` VO kartes izmaiņu
+tabulas atjaunināšana, lai arī tā rādītu atvasināto displayCode.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-24) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
+Sesijas 18-25) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
 konkrēts nākamais uzdevums - nav gatava kandidātu saraksta, ko piedāvāt
 bez papildu konteksta no lietotāja.
