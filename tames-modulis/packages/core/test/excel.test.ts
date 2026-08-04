@@ -694,6 +694,89 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
     expect(newSheet.getCell(12, baseCol).value).toBe("JAUNS");
     expect(newSheet.getCell(12, deltaCol).value).toBe(7);
   });
+
+  it("omits the Pasūtītāja rezerve table by default - opt-in only via includeReserveRegister", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const workbook = exportBoqToWorkbook(state); // no options - same as includeReserveRegister: false
+    const sheet = workbook.getWorksheet("IZMAIŅAS")!;
+
+    let foundReserveTitle = false;
+    sheet.eachRow((row) => {
+      if (row.getCell(1).value === "Pasūtītāja rezerve") foundReserveTitle = true;
+    });
+    expect(foundReserveTitle).toBe(false);
+  });
+
+  it("adds a Pasūtītāja rezerve table when includeReserveRegister is true, with correct accumulation/drawdown", () => {
+    const state = sampleState();
+    state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+
+    const savingsVo = createVariationOrder([], { title: "Izslēgšana", justification: "", instructedBy: "", date: "2026-01-01" });
+    savingsVo.status = "approved";
+    savingsVo.changes = [
+      { id: "c1", sectionId: "sec-1", itemId: "a", quantityDelta: 0, excluded: true, newItem: null, newSection: null },
+    ];
+    // item "a": quantity 100 * (5+3+2) = 1000 -> excluding it saves 1000.
+
+    const additionVo = createVariationOrder([savingsVo], { title: "Papildu darbi", justification: "", instructedBy: "", date: "2026-01-02" });
+    additionVo.status = "approved";
+    additionVo.reserveDrawdown = 400;
+    additionVo.changes = [
+      {
+        id: "c2",
+        sectionId: "sec-1",
+        itemId: null,
+        quantityDelta: 0,
+        excluded: false,
+        newSection: null,
+        newItem: { code: "2", description: "Jauna pozīcija", unit: "gab", quantity: 10, unitLaborCost: 20, unitMaterialsCost: 20, unitMechanismsCost: 10 },
+      },
+    ];
+    // new item: 10 * (20+20+10) = 500 impact.
+
+    state.variationOrders = [savingsVo, additionVo];
+
+    const workbook = exportBoqToWorkbook(state, { includeReserveRegister: true });
+    const sheet = workbook.getWorksheet("IZMAIŅAS")!;
+
+    let titleRow = -1;
+    sheet.eachRow((row, rowNumber) => {
+      if (row.getCell(1).value === "Pasūtītāja rezerve") titleRow = rowNumber;
+    });
+    expect(titleRow).toBeGreaterThan(0);
+
+    expect(sheet.getCell(titleRow + 2, 1).value).toBe("Uzkrāts: 1000.00 € · Izmantots: 400.00 € · Atlikums: 600.00 €");
+
+    const headerRow = titleRow + 4;
+    expect(sheet.getCell(headerRow, 1).value).toBe("VO");
+    expect(sheet.getCell(headerRow, 3).value).toBe("Ietekme (EUR)");
+
+    expect(sheet.getCell(headerRow + 1, 1).value).toBe("VO-1");
+    expect(sheet.getCell(headerRow + 1, 3).value).toBe(-1000);
+    expect(sheet.getCell(headerRow + 1, 4).value).toBe(1000);
+    expect(sheet.getCell(headerRow + 1, 5).value).toBe(0);
+    expect(sheet.getCell(headerRow + 1, 6).value).toBe(1000);
+
+    expect(sheet.getCell(headerRow + 2, 1).value).toBe("VO-2");
+    expect(sheet.getCell(headerRow + 2, 3).value).toBe(500);
+    expect(sheet.getCell(headerRow + 2, 4).value).toBe(0);
+    expect(sheet.getCell(headerRow + 2, 5).value).toBe(400);
+    expect(sheet.getCell(headerRow + 2, 6).value).toBe(600);
+  });
+
+  it("exportBoqToBuffer accepts and forwards the same ExportOptions", async () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const buffer = await exportBoqToBuffer(state, { includeReserveRegister: true });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const sheet = workbook.getWorksheet("IZMAIŅAS")!;
+
+    let foundReserveTitle = false;
+    sheet.eachRow((row) => {
+      if (row.getCell(1).value === "Pasūtītāja rezerve") foundReserveTitle = true;
+    });
+    expect(foundReserveTitle).toBe(true);
+  });
 });
 
 describe("exportBoqToWorkbook execution records", () => {

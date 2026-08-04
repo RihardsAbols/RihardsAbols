@@ -56,6 +56,11 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"tame" | "izmainas" | "izpilde">("tame");
+  // Ephemeral (nesaglabāts) eksporta izvēle, ne pastāvīga projekta īpašība -
+  // Pasūtītāja rezerve ir iekšēja darbuzņēmēja uzskaite, tāpēc katrā
+  // eksportā jāizvēlas atsevišķi, vai to iekļaut, nevis atceras starp
+  // sesijām. Noklusējums izslēgts (skat. CLAUDE.md "Pasūtītāja rezerve").
+  const [includeReserveRegister, setIncludeReserveRegister] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -177,7 +182,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
       // someone actually clicks export, instead of bloating the initial
       // page load for everyone who never uses it.
       const { exportBoqToBuffer } = await import("@tames-modulis/core/excel");
-      const buffer = await exportBoqToBuffer(state);
+      const buffer = await exportBoqToBuffer(state, { includeReserveRegister });
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
@@ -248,6 +253,16 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button onClick={handleExport} disabled={exporting}>
             {exporting ? "Sagatavo..." : "Eksportēt Excel"}
           </button>
+          {baselineLocked && state.variationOrders.length > 0 && (
+            <label className="reserve-export-checkbox">
+              <input
+                type="checkbox"
+                checked={includeReserveRegister}
+                onChange={(e) => setIncludeReserveRegister(e.target.checked)}
+              />
+              Iekļaut Pasūtītāja rezervi eksportā
+            </label>
+          )}
           <button
             onClick={() => importFileInputRef.current?.click()}
             disabled={importing || baselineLocked}

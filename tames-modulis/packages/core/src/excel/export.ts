@@ -4,7 +4,7 @@ import { computeExecutedToDate, computeExecutionOverview, computeExecutionRecord
 import type { BoqItem, BoqSection, BoqState } from "../models/boq.js";
 import type { ExecutionRecord } from "../models/executionRecord.js";
 import type { VariationOrder } from "../models/variationOrder.js";
-import { computeVariationOrderDirectTotalImpact, deriveCurrentSections, diffAgainstBaseline } from "../variationOrders/deriveCurrentState.js";
+import { computeReserveBalance, computeVariationOrderDirectTotalImpact, deriveCurrentSections, diffAgainstBaseline } from "../variationOrders/deriveCurrentState.js";
 import { colLetter } from "./cellValue.js";
 import { TAME_COLUMNS } from "./columns.js";
 
@@ -414,15 +414,18 @@ const VARIATION_ORDERS_SHEET_COLUMN_WIDTHS = [20, 12, 40, 28, 36, 16, 22, 10, 20
  * own impact on tiešās izmaksas, see computeVariationOrderDirectTotalImpact)
  * followed by a table of every pozīcija that differs from the frozen bāze
  * (see diffAgainstBaseline) after applying all APPROVED VO - i.e. exactly
- * what's currently rendered in the section sheets. Only called when the
- * project has at least one VO (see exportBoqToWorkbook) - a project that
- * never used this feature gets no extra sheet, keeping its export unchanged.
+ * what's currently rendered in the section sheets, and OPTIONALLY (see
+ * includeReserveRegister) a third "Pasūtītāja rezerve" table
+ * (computeReserveBalance). Only called when the project has at least one VO
+ * (see exportBoqToWorkbook) - a project that never used this feature gets no
+ * extra sheet, keeping its export unchanged.
  */
 function writeVariationOrdersSheet(
   workbook: ExcelJS.Workbook,
   state: BoqState,
   baselineSections: BoqSection[],
   currentSections: BoqSection[],
+  includeReserveRegister: boolean,
 ): void {
   const sheet = workbook.addWorksheet("IZMAIŅAS");
   VARIATION_ORDERS_SHEET_COLUMN_WIDTHS.forEach((width, i) => {
@@ -525,13 +528,71 @@ function writeVariationOrdersSheet(
     costDeltaCell.value = diffRow.directTotalDelta;
     costDeltaCell.numFmt = MONEY_FORMAT;
   });
+  row += diffRows.length;
 
-  const lastRow = row + diffRows.length;
+  let lastRow = row - 1;
+  if (includeReserveRegister) {
+    lastRow = writeReserveRegisterTable(sheet, state, baselineSections, row + 1);
+  }
+
   for (const sheetRow of sheet.getRows(1, lastRow) ?? []) {
     sheetRow?.eachCell({ includeEmpty: false }, (cell) => {
       cell.font = { ...cell.font, name: "Arial" };
     });
   }
+}
+
+/**
+ * Writes the "Pasūtītāja rezerve" table (computeReserveBalance) with its
+ * title at `titleRow`, as a third logical table stacked in the "IZMAIŅAS"
+ * sheet - same columns-shared-between-tables tradeoff as the VO reģistrs/
+ * diff table above (see VARIATION_ORDERS_SHEET_COLUMN_WIDTHS). Written ONLY
+ * when the caller opts in (see writeVariationOrdersSheet
+ * includeReserveRegister) - this is internal contractor-side tracking, not
+ * something every export should carry by default. Returns the last row
+ * written, for the caller's font-normalization pass.
+ */
+function writeReserveRegisterTable(sheet: ExcelJS.Worksheet, state: BoqState, baselineSections: BoqSection[], titleRow: number): number {
+  let row = titleRow;
+
+  sheet.getCell(row, 1).value = "Pasūtītāja rezerve";
+  sheet.getCell(row, 1).font = { ...HEADER_FONT, size: 13 };
+  row += 2;
+
+  const balance = computeReserveBalance(baselineSections, state.variationOrders);
+
+  const summaryCell = sheet.getCell(row, 1);
+  summaryCell.value = `Uzkrāts: ${balance.totalAccumulated.toFixed(2)} € · Izmantots: ${balance.totalDrawn.toFixed(2)} € · Atlikums: ${balance.available.toFixed(2)} €`;
+  summaryCell.font = HEADER_FONT;
+  row += 2;
+
+  const registerHeaderRow = row;
+  const registerHeaders = ["VO", "Nosaukums", "Ietekme (EUR)", "Papildina rezervi (EUR)", "Izmanto no rezerves (EUR)", "Atlikums pēc (EUR)"];
+  registerHeaders.forEach((label, i) => {
+    const cell = sheet.getCell(registerHeaderRow, i + 1);
+    cell.value = label;
+    cell.font = HEADER_FONT;
+  });
+  row += 1;
+
+  const firstEntryRow = row;
+  balance.entries.forEach((entry, i) => {
+    const r = firstEntryRow + i;
+    sheet.getCell(r, 1).value = entry.voNumber;
+    sheet.getCell(r, 2).value = entry.voTitle;
+    for (const [col, value] of [
+      [3, entry.directTotalImpact],
+      [4, entry.contribution],
+      [5, entry.drawdown],
+      [6, entry.balanceAfter],
+    ] as const) {
+      const cell = sheet.getCell(r, col);
+      cell.value = value;
+      cell.numFmt = MONEY_FORMAT;
+    }
+  });
+
+  return firstEntryRow + balance.entries.length - 1;
 }
 
 // Shares columns 1-5 between two logical tables (akta reģistrs, izpildes
@@ -646,7 +707,19 @@ function writeExecutionRecordsSheet(workbook: ExcelJS.Workbook, state: BoqState,
   }
 }
 
-export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
+export interface ExportOptions {
+  /**
+   * Whether to include the "Pasūtītāja rezerve" register/summary table in
+   * the "IZMAIŅAS" sheet (see writeReserveRegisterTable). Defaults to
+   * `false` - the reserve is internal contractor-side tracking (skat.
+   * CLAUDE.md "Pasūtītāja rezerve (Sesija 26)"), not something every export
+   * should carry automatically; opt in explicitly (packages/web exposes
+   * this as a checkbox next to the export button).
+   */
+  includeReserveRegister?: boolean;
+}
+
+export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "tames-modulis";
   workbook.created = new Date(state.updatedAt);
@@ -802,7 +875,7 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
   }
 
   if (state.variationOrders.length > 0) {
-    writeVariationOrdersSheet(workbook, state, state.sections, currentSections);
+    writeVariationOrdersSheet(workbook, state, state.sections, currentSections, options.includeReserveRegister ?? false);
   }
 
   if (state.executionRecords.length > 0) {
@@ -821,7 +894,7 @@ export function exportBoqToWorkbook(state: BoqState): ExcelJS.Workbook {
  * browser bundle; both work as ArrayBuffer-like data for callers (wrap in
  * Buffer.from() on the Node side, or new Blob([...]) in the browser).
  */
-export async function exportBoqToBuffer(state: BoqState): Promise<ArrayBuffer> {
-  const workbook = exportBoqToWorkbook(state);
+export async function exportBoqToBuffer(state: BoqState, options: ExportOptions = {}): Promise<ArrayBuffer> {
+  const workbook = exportBoqToWorkbook(state, options);
   return workbook.xlsx.writeBuffer() as unknown as Promise<ArrayBuffer>;
 }

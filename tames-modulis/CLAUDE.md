@@ -119,6 +119,10 @@ Npm workspace ar divām pakotnēm:
     "Bāzes daudzums"/"Delta" kolonnas + "IZMAIŅAS" lapa; ja ir izpildes
     akti, papildus "Izpildīts"/"Atlikums" kolonnas + "IZPILDES AKTI" lapa
     — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk pilnu semantiku.
+    Abas funkcijas pieņem opcionālu `ExportOptions` otro parametru
+    (`{ includeReserveRegister?: boolean }`, noklusējums `false`) — TIKAI
+    kad `true`, "IZMAIŅAS" lapai pievienota trešā "Pasūtītāja rezerve"
+    tabula, skat. "Pasūtītāja rezerve (Sesija 26)" zemāk.
   - `import.ts` — `importBoqFromWorkbook`/`importBoqFromBuffer`: kolonnas
     nosaka `detectImportColumns` (galvenes teksts), datu rindas atpazīst pēc
     mērvienības kolonnas (nevis rindas numura). Atvasinātās kolonnas
@@ -1441,12 +1445,7 @@ iestatītu `reserveDrawdown = 100` (pieejamais atlikums 0€) parādīja ABUS
 brīdinājumus vienlaicīgi ar pareiziem skaitļiem. Konsolē nav kļūdu nevienā
 solī.
 
-**Apzināti ārpus šī uzdevuma apjoma:** Excel eksports NEMAINĀS — rezerves
-reģistrs/kopsavilkums pagaidām TIKAI web UI (feature tika apstiprināts kā
-"UI vispirms", skat. lēmumus augšā), varētu būt nākamais kandidāts, JĀPAJAUTĀ
-lietotājam, ne jāpieņem.
-
-**Definition of Done — pārbaudīts:**
+**Definition of Done — UI daļa pārbaudīta:**
 - ✅ Core: 138/138 testi zaļi (130 + 8 jauni: 6 `computeReserveBalance`
   testi, 2 migrācijas testi v8->v9).
 - ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
@@ -1456,6 +1455,56 @@ lietotājam, ne jāpieņem.
   kļūdu.
 - ✅ Migrācija (v8 bez `reserveDrawdown` -> v9 ar noklusējumu 0; v8 ar jau
   iestatītu vērtību -> saglabāta) testēta.
+
+#### Rezerves reģistrs Excel eksportā, ar opt-in checkbox (turpinājums)
+
+Lietotājs pieprasīja pievienot rezerves reģistru Excel eksportam TŪLĪT pēc
+UI daļas pabeigšanas, ar skaidru nosacījumu: **opt-in checkbox sistēmā** —
+eksportēts TIKAI, ja atzīmēts. Cēlonis: Pasūtītāja rezerve ir iekšēja
+darbuzņēmēja uzskaite, ne visos gadījumos vēlama koplietotā/pasūtītājam
+sūtāmā Excel failā, tāpēc pēc noklusējuma IZSLĒGTS, nevis automātisks (kā
+VO/izpildes aktu sadaļas, kas parādās eksportā, tiklīdz tām ir dati).
+
+**Implementēts:**
+- `excel/export.ts` — jauns `ExportOptions` tips
+  (`{ includeReserveRegister?: boolean }`, noklusējums `false`),
+  `exportBoqToWorkbook(state, options?)`/`exportBoqToBuffer(state, options?)`
+  pieņem to kā otro (opcionālu) parametru. Kad `true` UN projektam ir
+  vismaz viena VO (esošais "IZMAIŅAS" lapas nosacījums), jauna
+  `writeReserveRegisterTable` funkcija pievieno TREŠO loģisko tabulu
+  ("Pasūtītāja rezerve" — kopsavilkuma rinda + reģistrs) TAJĀ PAŠĀ
+  "IZMAIŅAS" lapā, zem jau esošās "Mainītās pozīcijas" tabulas — tas pats
+  "vairākas tabulas, koplietotas kolonnas" paņēmiens, ko lapa jau lieto
+  VO reģistram/diff tabulai (skat. augšā "Tāmes izmaiņu (Variation Order)
+  vadība"). Bez opcijas eksports paliek PILNĪBĀ nemainīgs (backward
+  compatible, tāpat kā katra iepriekšējā VO/izpildes aktu eksporta izmaiņa).
+- `packages/web/src/components/ProjectEditor.tsx` — jauna checkbox
+  "Iekļaut Pasūtītāja rezervi eksportā" blakus "Eksportēt Excel" pogai,
+  redzama TIKAI, kad `baselineLocked && state.variationOrders.length > 0`
+  (rezerve bez VO nav definēta). **Apzināti EFEMĒRS (nesaglabāts) stāvoklis**
+  (`useState`, ne `BoqState` lauks) — tā ir eksporta darbības opcija (kā
+  drukas dialoga checkbox), ne pastāvīga projekta īpašība, tāpēc katrā
+  eksportā jāizvēlas no jauna, nav shēmas versijas maiņas.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, ieskaitot lejupielādētā
+`.xlsx` faila satura pārbaudi ar `openpyxl`):** projekts ar VO-1 (izslēgšana,
+-60€ ietekme) un VO-2 (papildu darbs, +20€ ietekme, `reserveDrawdown=20`).
+Eksports BEZ checkbox atzīmēšanas — lejupielādētajā failā "IZMAIŅAS" lapā
+NAV "Pasūtītāja rezerve" teksta nevienā šūnā (pareizi). Checkbox atzīmēts,
+eksportēts atkārtoti — lejupielādētajā failā "Pasūtītāja rezerve" tabula
+klāt ar PRECĪZIEM skaitļiem ("Uzkrāts: 60.00 € · Izmantots: 20.00 € ·
+Atlikums: 40.00 €", VO-1 rinda: -60/60/0/60, VO-2 rinda: 20/0/20/40) — sakrīt
+precīzi ar tiem pašiem skaitļiem, kas jau pārbaudīti UI kopsavilkumā (skat.
+augšā). Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 141/141 testi zaļi (138 + 3 jauni: opt-in noklusējuma tests,
+  tests ar reāliem skaitļiem `includeReserveRegister: true`,
+  `exportBoqToBuffer` opciju forward tests).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
+- ✅ Manuāli pārbaudīts ar Playwright, ieskaitot lejupielādētā `.xlsx` faila
+  satura pārbaudi ar `openpyxl` — checkbox pareizi kontrolē, vai rezerves
+  tabula parādās eksportā, skaitļi precīzi sakrīt ar UI.
 
 ### Favicon
 

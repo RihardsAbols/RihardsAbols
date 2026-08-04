@@ -1695,16 +1695,43 @@ nevienā solī.
   kļūdu.
 - ✅ Migrācija (v8 bez `reserveDrawdown` -> v9 ar noklusējumu 0; v8 ar jau
   iestatītu vērtību -> saglabāta) testēta.
-- ⚠️ Apzināti ārpus apjoma (lietotājs apstiprināja "UI vispirms"): Excel
-  eksports NEMAINĀS — rezerves reģistrs/kopsavilkums pagaidām tikai web UI.
+
+**Papildinājums tajā pašā sesijā — rezerves reģistrs Excel eksportā, ar
+opt-in checkbox:** lietotājs pieprasīja to uzreiz pēc UI daļas, ar skaidru
+nosacījumu — jauns "sistēmā checkbox, ja atzīmēts, tad eksportēt" (nevis
+automātiski, kā VO/izpildes aktu sadaļas). Cēlonis: rezerve ir iekšēja
+darbuzņēmēja uzskaite, ne vienmēr vēlama pasūtītājam sūtāmā failā.
+
+**Implementēts:** skat. CLAUDE.md "Rezerves reģistrs Excel eksportā, ar
+opt-in checkbox (turpinājums)" pilnu tehnisko aprakstu — `excel/export.ts`
+jauns `ExportOptions` tips (`{ includeReserveRegister?: boolean }`,
+noklusējums `false`), `exportBoqToWorkbook`/`exportBoqToBuffer` pieņem to
+kā opcionālu otro parametru; jauna `writeReserveRegisterTable` pievieno
+trešo tabulu ("Pasūtītāja rezerve") "IZMAIŅAS" lapā, TIKAI kad opcija
+`true`. `ProjectEditor.tsx` jauna checkbox "Iekļaut Pasūtītāja rezervi
+eksportā" blakus eksporta pogai, redzama tikai pēc bāzes iesaldēšanas UN
+ja projektam ir VO — apzināti EFEMĒRS (nesaglabāts) stāvoklis, ne
+`BoqState` lauks (eksporta darbības opcija, ne pastāvīga projekta īpašība).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, ieskaitot lejupielādētā
+`.xlsx` faila satura pārbaudi ar `openpyxl`):** projekts ar VO-1 (-60€) un
+VO-2 (+20€, `reserveDrawdown=20`). Eksports BEZ checkbox — lejupielādētajā
+failā NAV "Pasūtītāja rezerve" teksta (pareizi). Checkbox atzīmēts,
+eksportēts atkārtoti — tabula klāt ar precīziem skaitļiem ("Uzkrāts:
+60.00 € · Izmantots: 20.00 € · Atlikums: 40.00 €", VO-1: -60/60/0/60,
+VO-2: 20/0/20/40) — sakrīt precīzi ar UI kopsavilkumu. Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 141/141 testi zaļi (138 + 3 jauni šai papildinājumam).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
+- ✅ Manuāli pārbaudīts ar Playwright, ieskaitot lejupielādētā `.xlsx`
+  faila satura pārbaudi ar `openpyxl` — checkbox pareizi kontrolē
+  eksportu, skaitļi sakrīt ar UI.
 
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Sesijas 25 un 26 pabeigtas.** Šobrīd nav zināma neapstiprināta kandidāta.
-
-**Apzināti ārpus Sesijas 26 apjoma (varētu būt nākamais kandidāts, JĀPAJAUTĀ
-lietotājam, ne jāpieņem):** Pasūtītāja rezerves reģistrs/kopsavilkums Excel
-eksportā (šobrīd tikai web UI).
+**Sesijas 25 un 26 pabeigtas** (ieskaitot rezerves reģistra Excel eksporta
+papildinājumu). Šobrīd nav zināma neapstiprināta kandidāta.
 
 **Joprojām apzināti ārpus apjoma (no Sesijas 24):** Excel eksporta
 paplašināšana ar tām pašām atvasinātās numerācijas/VO-delta kolonnām, ko

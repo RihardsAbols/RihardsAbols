@@ -116,8 +116,18 @@ body {
 
 .editor-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.reserve-export-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #555;
+  white-space: nowrap;
 }
 
 .status {

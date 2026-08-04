@@ -1,4 +1,5 @@
 export { TAME_COLUMNS, KNOWN_UNITS, normalizeUnit, isKnownUnit } from "./columns.js";
+export type { ExportOptions } from "./export.js";
 export { exportBoqToWorkbook, exportBoqToBuffer } from "./export.js";
 export { importBoqFromWorkbook, importBoqFromBuffer } from "./import.js";
 export type { DetectedExecutionActColumns, DetectedImportColumns } from "./headerDetection.js";
