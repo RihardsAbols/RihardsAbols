@@ -2,7 +2,8 @@ import ExcelJS from "exceljs";
 import { createEmptyBoqState, type BoqItem, type BoqSection, type BoqState } from "../models/boq.js";
 import { cellNumber, cellText } from "./cellValue.js";
 import { isKnownUnit } from "./columns.js";
-import { detectImportColumns } from "./headerDetection.js";
+import { parseDayworksItems } from "./dayworksImport.js";
+import { detectDayworksColumns, detectImportColumns } from "./headerDetection.js";
 
 /**
  * Reads BOQ sections out of an arbitrary Līguma tāme-shaped workbook — either
@@ -22,6 +23,10 @@ import { detectImportColumns } from "./headerDetection.js";
  * unit costs instead of trusted as stored values, since this module is the
  * source of truth for them.
  *
+ * A sheet that fails the standard 7-column detection is tried once more as a
+ * Dayworks Schedule (single Rate column, no Salary/Materials/Mechanisms
+ * split) before being skipped — see dayworksImport.ts.
+ *
  * Sheet name becomes the section id/name and freshly generated ids are
  * assigned to items, since Excel carries no equivalent of our internal ids —
  * round-tripping JSON storage through Excel and back is lossy by nature.
@@ -39,29 +44,37 @@ export function importBoqFromWorkbook(
 
   workbook.eachSheet((sheet) => {
     const columns = detectImportColumns(sheet);
-    if (!columns) {
-      return;
-    }
+    let items: BoqItem[];
 
-    const items: BoqItem[] = [];
+    if (columns) {
+      items = [];
+      sheet.eachRow((row) => {
+        const unitText = cellText(row.getCell(columns.unit)).trim();
+        if (!isKnownUnit(unitText)) {
+          return;
+        }
 
-    sheet.eachRow((row) => {
-      const unitText = cellText(row.getCell(columns.unit)).trim();
-      if (!isKnownUnit(unitText)) {
+        items.push({
+          id: crypto.randomUUID(),
+          code: cellText(row.getCell(columns.nrPk)).trim(),
+          description: cellText(row.getCell(columns.name)).trim(),
+          unit: unitText,
+          quantity: cellNumber(row.getCell(columns.quantity)),
+          unitLaborCost: cellNumber(row.getCell(columns.unitLabor)),
+          unitMaterialsCost: cellNumber(row.getCell(columns.unitMaterials)),
+          unitMechanismsCost: cellNumber(row.getCell(columns.unitMechanisms)),
+        });
+      });
+    } else {
+      // Falls back to the Dayworks Schedule shape (single Rate column, no
+      // Salary/Materials/Mechanisms split) only once the standard 7-column
+      // detection has already rejected this sheet - see dayworksImport.ts.
+      const dayworksColumns = detectDayworksColumns(sheet);
+      if (!dayworksColumns) {
         return;
       }
-
-      items.push({
-        id: crypto.randomUUID(),
-        code: cellText(row.getCell(columns.nrPk)).trim(),
-        description: cellText(row.getCell(columns.name)).trim(),
-        unit: unitText,
-        quantity: cellNumber(row.getCell(columns.quantity)),
-        unitLaborCost: cellNumber(row.getCell(columns.unitLabor)),
-        unitMaterialsCost: cellNumber(row.getCell(columns.unitMaterials)),
-        unitMechanismsCost: cellNumber(row.getCell(columns.unitMechanisms)),
-      });
-    });
+      items = parseDayworksItems(sheet, dayworksColumns);
+    }
 
     if (items.length === 0) {
       return;

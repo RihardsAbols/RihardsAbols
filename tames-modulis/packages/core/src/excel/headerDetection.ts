@@ -26,17 +26,22 @@ const FIELD_MATCHERS: Record<keyof DetectedImportColumns, (key: string) => boole
   // Latvian-only and bilingual forms without loosening this into a bare
   // .includes(), which would also match "npk" appearing deeper in unrelated
   // header text.
-  nrPk: (key) => key.startsWith("nrpk") || key.startsWith("npk"),
+  // "No." (English-only sheets, e.g. a Bill of Quantities' "General
+  // Requirements" page, which - unlike the bilingual discipline sheets in
+  // the same file - carries no Latvian header text at all) normalizes to
+  // exactly "no", safe as an exact match alongside the LV/bilingual prefix
+  // check.
+  nrPk: (key) => key.startsWith("nrpk") || key.startsWith("npk") || key === "no",
   // Adjacent substring, not "includes both words anywhere" - a real sheet's
   // instructional caption "(būvdarbu veids vai konstruktīvā elementa
   // nosaukums)" contains both words too, just not next to each other, and a
   // looser check false-matched it (see headerDetection.test.ts).
-  name: (key) => key.includes("būvdarbunosaukum"),
-  unit: (key) => key.includes("mērvien"),
-  quantity: (key) => key.includes("daudzum"),
-  unitLabor: (key) => key.includes("darbaalga"),
-  unitMaterials: (key) => key.includes("materiāli") || key.includes("būvizstrādājumi"),
-  unitMechanisms: (key) => key.includes("mehānismi"),
+  name: (key) => key.includes("būvdarbunosaukum") || key.includes("nameofconstructionwork"),
+  unit: (key) => key.includes("mērvien") || key === "unit",
+  quantity: (key) => key.includes("daudzum") || key === "quantity",
+  unitLabor: (key) => key.includes("darbaalga") || key === "salary",
+  unitMaterials: (key) => key.includes("materiāli") || key.includes("būvizstrādājumi") || key === "materials",
+  unitMechanisms: (key) => key.includes("mehānismi") || key === "mechanisms",
 };
 
 const FIELD_NAMES = Object.keys(FIELD_MATCHERS) as (keyof DetectedImportColumns)[];
@@ -103,6 +108,45 @@ export function detectImportColumns(sheet: ExcelJS.Worksheet): DetectedImportCol
   }
 
   return found as DetectedImportColumns;
+}
+
+export interface DetectedDayworksColumns {
+  nrPk: number;
+  name: number;
+  unit: number;
+  quantity: number;
+  /** Single EUR rate (no labor/materials/mechanisms split) - see dayworksImport.ts. */
+  rate: number;
+}
+
+const DAYWORKS_FIELD_MATCHERS: Record<keyof DetectedDayworksColumns, (key: string) => boolean> = {
+  nrPk: (key) => key === "no",
+  name: (key) => key.includes("nameofconstructionwork"),
+  unit: (key) => key === "unit",
+  quantity: (key) => key === "quantity",
+  rate: (key) => key.includes("rateeuro"),
+};
+
+const DAYWORKS_FIELD_NAMES = Object.keys(DAYWORKS_FIELD_MATCHERS) as (keyof DetectedDayworksColumns)[];
+
+/**
+ * Detects a FIDIC-style Dayworks Schedule sheet - a real bilingual Bill of
+ * Quantities file's "B Day works" page, English-only, with a single "Rate
+ * (euro/h)" column instead of the Salary/Materials/Mechanisms split every
+ * other sheet has. detectImportColumns rejects it outright (that 3-way split
+ * is a required field there), which is the intended signal for the caller to
+ * try this detector as a fallback - see importBoqFromWorkbook.
+ */
+export function detectDayworksColumns(sheet: ExcelJS.Worksheet): DetectedDayworksColumns | null {
+  const found = scanHeaderColumns(sheet, DAYWORKS_FIELD_MATCHERS);
+
+  for (const field of DAYWORKS_FIELD_NAMES) {
+    if (found[field] === undefined) {
+      return null;
+    }
+  }
+
+  return found as DetectedDayworksColumns;
 }
 
 export interface DetectedExecutionActColumns {

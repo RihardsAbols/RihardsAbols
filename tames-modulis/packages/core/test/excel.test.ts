@@ -467,6 +467,67 @@ describe("importBoqFromWorkbook against hand-built sheets (real-world structure)
       }),
     ]);
   });
+
+  it("reads an English-only sheet ('No.'/'Unit'/'Quantity'/'Salary'/'Materials'/'Mechanisms'), unlike every bilingual discipline sheet in the same real file", () => {
+    // Reproduces the C2-10 file's "A General requirements" page: unlike its
+    // 63 bilingual discipline sheets (LV/EN headers), this one carries NO
+    // Latvian text at all - detectImportColumns needed English matchers
+    // added alongside the Latvian ones, not instead of them.
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("A General requirements");
+
+    sheet.getCell(11, 1).value = "No.";
+    sheet.getCell(11, 2).value = "Name of construction work";
+    sheet.getCell(11, 3).value = "Unit";
+    sheet.getCell(11, 4).value = "Quantity";
+    sheet.getCell(12, 7).value = "Salary";
+    sheet.getCell(12, 8).value = "Materials";
+    sheet.getCell(12, 9).value = "Mechanisms";
+
+    sheet.getCell(16, 1).value = "A";
+    sheet.getCell(16, 2).value = "Onsite Ambulance and Nurse";
+    sheet.getCell(16, 3).value = "item";
+    sheet.getCell(16, 4).value = 1;
+    sheet.getCell(16, 8).value = 26325;
+
+    const state = importBoqFromWorkbook(workbook, "proj-en", "C2-10");
+
+    expect(state.sections).toHaveLength(1);
+    expect(state.sections[0].items).toEqual([
+      expect.objectContaining({
+        code: "A",
+        description: "Onsite Ambulance and Nurse",
+        unit: "item",
+        quantity: 1,
+        unitLaborCost: 0,
+        unitMaterialsCost: 26325,
+        unitMechanismsCost: 0,
+      }),
+    ]);
+  });
+
+  it("falls back to the Dayworks Schedule shape for a sheet the standard 7-column detection rejects (no Salary/Materials/Mechanisms split)", () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("B Day works");
+    sheet.getCell(11, 1).value = "No.";
+    sheet.getCell(11, 2).value = "Name of construction work";
+    sheet.getCell(11, 3).value = "Unit";
+    sheet.getCell(11, 4).value = "Quantity";
+    sheet.getCell(11, 5).value = "Rate (euro/h)";
+
+    sheet.getCell(15, 2).value = "LABOUR ON SITE";
+    sheet.getCell(16, 1).value = "A";
+    sheet.getCell(16, 2).value = "Semi-skilled labourers";
+    sheet.getCell(16, 3).value = "hr";
+    sheet.getCell(16, 5).value = 19;
+
+    const state = importBoqFromWorkbook(workbook, "proj-dw", "C2-10");
+
+    expect(state.sections).toHaveLength(1);
+    expect(state.sections[0].items).toEqual([
+      expect.objectContaining({ code: "A", description: "Semi-skilled labourers", unit: "hr", quantity: 0, unitLaborCost: 19 }),
+    ]);
+  });
 });
 
 function sampleStateWithApprovedVariationOrder(): BoqState {

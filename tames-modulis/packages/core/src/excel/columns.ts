@@ -64,6 +64,12 @@ export const KNOWN_UNITS = new Set([
   "maš/st",
   "mēn",
   "ievads",
+  // English-only variants, seen in a real bilingual file's English-only
+  // "General Requirements"/"Dayworks Schedule" pages (see CLAUDE.md
+  // "Bilingvāla (LV/EN) tāmes faila imports" Solis 2).
+  "item",
+  "hr",
+  "bag",
 ]);
 
 /**

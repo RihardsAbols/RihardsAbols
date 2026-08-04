@@ -1504,7 +1504,7 @@ sesijās.
   plūsma, persistence pēc lapas pārlādes, regresija projektam bez VO,
   konsolē nav kļūdu.
 
-## Sesija 25: Bilingvāla (LV/EN) C2-10 tāmes faila imports — ✅ Solis 1 pabeigts
+## Sesija 25: Bilingvāla (LV/EN) C2-10 tāmes faila imports — ✅ pabeigts (Soļi 1+2)
 
 **Uzdevums:** lietotājs iesniedza jaunu reālu tāmes failu (C2-10, "Bill of
 Quantities", 67 lapas, LV/EN divvalodu formāts) — "pārbaudi vai tā korekti
@@ -1568,21 +1568,81 @@ sadaļas) aprēķinātā tiešo izmaksu summa: 25766510.57 €.
 - ✅ Manuāli pārbaudīts pret REĀLO C2-10 failu — 0/67 -> 63/67 lapas, 0 ->
   3708 pozīcijas, 2-10 lapas summa sakrīt ar avota faila summu līdz
   santīmam.
-- ⚠️ Solis 2 (NAV vēl sākts, JĀPAJAUTĀ lietotājam): "A General
-  requirements"/"B Day works" lapas (angļu-only galvenes, "B Day works"
-  pavisam cita kolonnu struktūra) joprojām netiek importētas — var būt
-  reāla līguma summas daļa (FIDIC Preliminaries/Dayworks), kas klusi tiek
-  pazaudēta.
-- ⚠️ Manuālā UI pārbaude (Playwright, imports caur reālo pārlūka plūsmu, ne
-  tikai core funkciju tiešs izsaukums) šai sesijai vēl NAV veikta.
+- ✅ Manuālā UI pārbaude (Playwright, reāls imports caur pārlūka plūsmu, ne
+  tikai core funkciju tiešs izsaukums) veikta pēc lietotāja apstiprinājuma
+  Solim 2 — skat. zemāk, abi soļi pārbaudīti vienā UI plūsmā.
+
+**Solis 2: "A General requirements"/"B Day works" — ✅ pabeigts.**
+Izpēte atklāja, ka abas paliekošās nesaprastās lapas ir strukturāli
+ATŠĶIRĪGAS cita no citas (skat. CLAUDE.md "'A General requirements'/'B Day
+works' — angļu-only lapas (Solis 2)" pilnu tehnisko aprakstu). Lietotājs
+apstiprināja: "A" ir izcenota un iekļauta izmaksu kopsavilkumā, tāpēc
+jāiekļauj kopējā tāmju struktūrā; "B" ir FIDIC dienas darbu uzskaitījums,
+augšupielādēts informācijai — ja radīsies papildu darbi, būs pieejama
+informācija par saskaņotām vienības cenām.
+
+**Implementēts:**
+- `headerDetection.ts` `FIELD_MATCHERS` — katram no 7 laukiem pievienota
+  angļu ekvivalenta pārbaude (disjunkcija ar jau esošo LV/bilingvālo), lai
+  atpazītu "A General requirements" (pilnībā angļu galvenes: No./Name of
+  construction work/Unit/Quantity/Salary/Materials/Mechanisms).
+  `KNOWN_UNITS` papildināts ar `item`.
+- `headerDetection.ts` jauns `detectDayworksColumns` (5 lauki: nrPk/name/
+  unit/quantity/rate) FIDIC dienas darbu likmju lapas ("B Day works")
+  formātam — VIENA "Rate (euro/h)" kolonna, nevis 3-way sadalījums, tāpēc
+  standarta `detectImportColumns` to VIENMĒR pareizi noraida (signāls
+  mēģināt šo fallback ceļu). `KNOWN_UNITS` papildināts ar `hr`, `bag`.
+- `excel/dayworksImport.ts` (jauns fails) — `parseDayworksItems`: katra
+  rinda -> `BoqItem` ar `daudzums = 0` (nekas nav reāli pasūtīts, tāpēc
+  nekad neietekmē kopsummu — precīzi atbilst faila pašas "Rate Only"
+  semantikai), VIENĪGĀ likme ievietota pareizajā no 3 izmaksu laukiem
+  atkarībā no lapas PAŠAS brīvā teksta sadaļu virsrakstiem (LABOUR ON SITE/
+  MATERIAL DELIVERED TO SITE/PLANT HIRE) — vienkāršs secīgs "pašreizējās
+  kategorijas" stāvokļa automāts.
+- `import.ts` `importBoqFromWorkbook` — kad `detectImportColumns` atgriež
+  `null`, pirms lapas izlaišanas mēģina `detectDayworksColumns` kā fallback.
+
+**Testi:** `test/excel.test.ts` — 2 jauni (angļu-only "A" galvenes
+atpazīšana, `importBoqFromWorkbook` fallback uz dayworks formātu).
+`test/dayworksImport.test.ts` (jauns fails, 5 testi) — kolonnu noteikšana,
+kategoriju sabucketošana (labour/material/plant), "%" uzcenojuma rindu
+izlaišana. Kopā **130/130 core testi zaļi** (123 + 7 jauni).
+
+**Manuāli pārbaudīts pret REĀLO C2-10 failu** (pagaidu skripti, izdzēsti
+pēc lietošanas): **65 no 67 lapām atpazītas** (`KO`/`KS` paliek pareizi
+izlaistas kā leģitīmas kopsavilkuma lapas). "A General requirements": 104
+pozīcijas, kopsumma 1673637.22 € (0.08€ starpība no avota 1673637.30 € —
+nenozīmīga, tāda paša lieluma kā jau pieņemtā avota faila noapaļošanas
+starpība, skat. Sesija 12); pārbaudīts arī, ka lapas "COLLECTION"/"Total
+Brought Forward from Page No." starprindu kopsavilkuma tabula NETIEK
+importēta (nav "item" mērvienības nevienā tās rindā) — bez tā šīs rindas
+dubultotu kopsummu. "B Day works": 39 pozīcijas, VISAS `daudzums=0` ar
+pareizi sabucketotu likmi (piem. "Semi-skilled labourers" -> Darba
+alga=19€/h, "Cement" -> Materiāli=10€/bag, "Piling rig" -> Mehānismi=197€/h),
+kopsumma 0.00 € (pareizi, "Rate Only" semantika). Projekta KOPĒJĀ tiešo
+izmaksu summa: 27440147.79 € (25766510.57 no 63 disciplīnu lapām +
+1673637.22 no "A", "B" devums 0).
+
+**Pilna UI plūsma pārbaudīta reālā pārlūkā (Playwright, reāls Chromium):**
+imports caur `packages/web` dev serveri (nevis tikai core funkciju tiešs
+izsaukums) — 65 sadaļas (`Dzēst sadaļu` pogu skaits), projekta kopsavilkums
+UI precīzi sakrita ar core aprēķinu (Tiešās izmaksas: 27440147.79 €),
+konsolē NAV kļūdu ne importa, ne "Saglabāt" laikā.
+
+**Definition of Done — Solis 2 pārbaudīts:**
+- ✅ Core: 130/130 testi zaļi (7 jauni šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs.
+- ✅ Manuāli pārbaudīts pret REĀLO C2-10 failu, gan core funkciju tiešā
+  izsaukumā, gan REĀLĀ pārlūkā (Playwright, imports+saglabāšana) — 65/67
+  lapas, pareiza kopsumma, konsolē nav kļūdu.
+- ✅ Abi Sesijas 25 soļi tagad pabeigti — C2-10 fails importējas pilnībā
+  pareizi (izņemot `KO`/`KS` kopsavilkuma lapas, kas leģitīmi paliek
+  izlaistas, jo tajās nav pozīciju datu).
 
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Solis 2 no Sesijas 25 (JĀPAJAUTĀ lietotājam, nevis jāpieņem):** lemt, ko
-darīt ar "A General requirements"/"B Day works" lapām (skat. augšā) —
-importēt ar atsevišķu angļu-galvenes atpazīšanu un/vai vienkāršotu kolonnu
-karti "B Day works" gadījumam, vai apzināti atstāt ārpus apjoma šai
-versijai.
+**Sesijas 25 abi soļi pabeigti.** C2-10 imports strādā pilnībā — šobrīd nav
+zināma neapstiprināta kandidāta importa jomā.
 
 **Jauna, lielāka funkcionalitātes ideja no lietotāja (vēl nav apspriesta/
 projektēta):** "Pasūtītāja rezerve" — mehānisms, kas uzkrātu VO ceļā

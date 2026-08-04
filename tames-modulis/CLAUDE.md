@@ -80,15 +80,26 @@ Npm workspace ar divām pakotnēm:
   - `headerDetection.ts` — `detectImportColumns`: **importam** kolonnas
     atrod pēc galvenes teksta (nevis fiksētas pozīcijas kā `TAME_COLUMNS`,
     ko lieto tikai eksports) — skat. "Kolonnu noteikšana pēc galvenes
-    teksta" zemāk. `detectExecutionActColumns` — tas pats galvenes-teksta
+    teksta" zemāk; katram no 7 laukiem matcheris pārbauda gan LV, gan EN
+    galvenes tekstu (skat. "Bilingvāla (LV/EN) tāmes faila imports (Sesija
+    25)" zemāk). `detectExecutionActColumns` — tas pats galvenes-teksta
     princips izpildes akta (Forma Nr.2/Nr.3) failiem, skat. "Izpildes aktu
-    Excel imports (Sesija 21)" zemāk.
+    Excel imports (Sesija 21)" zemāk. `detectDayworksColumns` — atsevišķs,
+    5 lauku matcheris FIDIC dienas darbu likmju lapas formātam (VIENA "Rate"
+    kolonna, ne 3-way sadalījums), skat. "'A General requirements'/'B Day
+    works' — angļu-only lapas (Solis 2)" zemāk.
   - `executionActImport.ts` — `parseExecutionActWorkbook`/
     `parseExecutionActBuffer` (nolasa "šī perioda izpildīts" katrai akta
     lapai), `suggestSheetToSectionMapping` (akta lapa -> `BoqSection` pēc
     nosaukuma), `matchExecutionActToProject` (akta rinda -> `BoqItem` pēc
     koda mapotajā sadaļā) — skat. "Izpildes aktu Excel imports (Sesija 21)"
     zemāk pilnu semantiku.
+  - `dayworksImport.ts` — `parseDayworksItems`: FIDIC dienas darbu (dayworks)
+    likmju lapas import — katra rinda kļūst par `BoqItem` ar `daudzums = 0`
+    (informatīva likme, ne pasūtīts darbs) un VIENĪGO likmi ievieto pareizajā
+    izmaksu laukā pēc lapas PAŠAS brīvā teksta sadaļu virsrakstiem (LABOUR/
+    MATERIAL/PLANT), skat. "'A General requirements'/'B Day works' — angļu-
+    only lapas (Solis 2)" zemāk.
   - `export.ts` — `exportBoqToWorkbook`/`exportBoqToBuffer`: viena darblapa
     (`KOPSAVILKUMS`) ar pieņēmumiem (likmes) un projekta kopsavilkumu, un pa
     darblapai katrai sadaļai ar pozīcijām. Katra lapa sākas ar projekta/
@@ -396,6 +407,78 @@ importētas. `2-10` lapas (lietotāja konkrētais projekts) aprēķinātā tieš
 izmaksu summa (`calculateSectionDirectTotal`) sakrita ar pašas lapas "Izmaksas
 kopā" rindu LĪDZ SANTĪMAM (53500.10999999999 abās) — tā pati pārbaudes
 metodoloģija, kas Sesijā 12 (DEM lapa) un Sesijā 20.
+
+#### "A General requirements"/"B Day works" — angļu-only lapas (Solis 2)
+
+Šīs divas C2-10 faila lapas paliek NEATPAZĪTAS pat pēc Soļa 1 labojuma —
+NEVIS bilingvālas kā pārējās 63, bet PILNĪBĀ ANGĻU galvenes ("No.", "Name of
+construction work", "Unit", "Quantity", "Salary"/"Materials"/"Mechanisms").
+Izpēte (skat. PROGRESS.md Sesija 25) atklāja, ka abas ir strukturāli
+atšķirīgas cita no citas, un lietotājs apstiprināja atšķirīgu apstrādi
+katrai:
+
+**"A General requirements" IR reāla, izcenota tāmes daļa** — aprēķinātā
+kopsumma **1 673 637.30 €** precīzi sakrīt ar `KS` kopsavilkuma lapas
+"General Requirement" kategorijas rindu (~5.6% no visas tāmes). Lietotājs
+apstiprināja: jāiekļauj kopējā tāmju struktūrā. `headerDetection.ts`
+`FIELD_MATCHERS` katram no 7 laukiem papildināts ar angļu ekvivalentu
+(disjunkcija ar jau esošo LV/bilingvālo pārbaudi, piem. `unit: (key) =>
+key.includes("mērvien") || key === "unit"`) — LV un EN pārbaudes VIENĀ
+matcherī, nevis atsevišķs ceļš priekš angļu failiem. `KNOWN_UNITS`
+papildināts ar `item` (angļu vispārīgā vienība lump-sum pozīcijām). Reālās
+cenotās pozīcijas (~15-20 gab.) ir izkaisītas starp ~30 rindām ar garu
+līguma punktu tekstu (arī ar mērvienību "item", bet 0€ izmaksām) — apzināta
+izvēle importēt VISU (arī 0€ teksta rindas), nevis filtrēt pēc izmaksām,
+lai saglabātu pilnu avota faila audit trail (konsekventi ar jau dokumentēto
+"Excel imports/eksports ir daļēji zaudējošs, bet nefiltrē pēc satura"
+principu) — pārbaudīts, ka lapas "COLLECTION"/"Total Brought Forward from
+Page No." starprindu kopsavilkuma tabula (pati satur agregētas summas par
+katru no 14 avota lapām) NETIEK importēta kā pozīcijas (tai nav "item"
+mērvienības vērtības nevienā rindā) — bez tā šīs rindas dubultotu kopsummu.
+
+**"B Day works" NAV izcenota tāme, bet FIDIC dienas darbu (dayworks)
+likmju saraksts** — apstiprināts, ka VISĀ lapā `Quantity` kolonna ir tukša,
+un pašas lapas noslēguma kopsavilkums burtiski raksta **"Rate Only"** katrai
+no 6 lapām — nav reālas pasūtītas summas, tikai saskaņotas vienības cenas
+"informācijai" (lietotāja vārdiem) turpmākiem VO, ja radīsies papildu darbi,
+kas jāapmaksā pēc dienas darbu likmēm. Struktūra pilnībā atšķiras no
+standarta 7-kolonnu izkārtojuma — VIENA "Rate (euro/h)" kolonna (nevis
+Darba alga/Materiāli/Mehānismi sadalījums), tāpēc `detectImportColumns`
+(kas pieprasa visus 7 laukus) to VIENMĒR noraida — tas ir tieši signāls
+`importBoqFromWorkbook`-am mēģināt jaunu, atsevišķu ceļu:
+
+- `headerDetection.ts` `detectDayworksColumns` — 5 lauku (nrPk/name/unit/
+  quantity/rate) noteikšana, tikai angļu galvenēm (šī faila veids nekad nav
+  bijis bilingvāls novērotajos paraugos).
+- `excel/dayworksImport.ts` (jauns fails) — `parseDayworksItems` importē
+  KATRU rindu ar `daudzums = 0` (nekas nav reāli pasūtīts, tāpēc šīs
+  pozīcijas NEKAD neietekmē tāmes kopsummu — precīzi atbilst "Rate Only"
+  semantikai), bet VIENĪGĀ likme tiek ierakstīta pareizajā no trim izmaksu
+  laukiem (Darba alga/Materiāli/Mehānismi) atkarībā no tā, zem kuras no
+  lapas PAŠAS brīvā teksta sadaļu virsrakstiem ("LABOUR ON SITE"/"MATERIAL
+  DELIVERED TO SITE"/"PLANT HIRE") rinda atrodas — vienkāršs secīgs
+  "pašreizējās kategorijas" stāvokļa automāts skenējot rindas no augšas uz
+  leju, pārslēdzas, ieraugot šos atslēgvārdus teksta kolonnā. Procentu
+  uzcenojuma rindas ("Allow for Profit and Overhead on labour", mērvienība
+  "%") pareizi izlaistas — `%` NAV `KNOWN_UNITS`, tā pati pārbaude, ko lieto
+  visas pārējās lapas.
+- `import.ts` `importBoqFromWorkbook` — kad `detectImportColumns` atgriež
+  `null` kādai lapai, PIRMS tās izlaišanas mēģina `detectDayworksColumns`
+  kā fallback; ja arī tas neizdodas (piem. patiess satura rādītājs/
+  kopsavilkuma lapa), lapa paliek izlaista tāpat kā līdz šim.
+
+**Pārbaudīts pret REĀLO C2-10 failu:** pēc abiem labojumiem **65 no 67
+lapām atpazītas** (`KO`/`KS` paliek pareizi izlaistas — tās ir leģitīmas
+kopsavilkuma lapas). "A General requirements": 104 pozīcijas, kopsumma
+1673637.22 € (0.08€ starpība no avota 1673637.30 € — nenozīmīga, tāda paša
+lieluma kā iepriekš pieņemtā avota faila noapaļošanas starpība, skat.
+Sesija 12). "B Day works": 39 pozīcijas, VISAS ar `daudzums=0` un pareizi
+sabucketotu likmi (piem. "Semi-skilled labourers" -> Darba alga=19,
+"Cement" -> Materiāli=10, "Piling rig" -> Mehānismi=197), kopsumma 0.00 €
+(pareizi). Projekta KOPĒJĀ tiešo izmaksu summa: 27440147.79 € (25766510.57
++ 1673637.22, B devums 0). Pārbaudīts gan `importBoqFromWorkbook` tiešā
+izsaukumā, gan REĀLĀ pārlūkā (Playwright): 65 sadaļas, konsolē nav kļūdu,
+UI kopsavilkums precīzi sakrīt.
 
 ### Pozīciju tabulas virtualizācija (UI veiktspēja)
 
