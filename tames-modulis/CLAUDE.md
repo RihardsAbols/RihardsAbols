@@ -119,6 +119,13 @@ Npm workspace ar divām pakotnēm:
     "Bāzes daudzums"/"Delta" kolonnas + "IZMAIŅAS" lapa; ja ir izpildes
     akti, papildus "Izpildīts"/"Atlikums" kolonnas + "IZPILDES AKTI" lapa
     — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk pilnu semantiku.
+    "Nr.p.k." kolonnā pēc bāzes iesaldēšanas rāda atvasināto `displayCode`
+    (nevis bāzes `item.code`), un katrai sadaļai relevanta apstiprināta VO
+    pievieno "VO-X ΔDaudz."/"VO-X ΔEUR" kolonnu pāri — tā pati
+    `computeItemCodesAndHistory` atvasinātā numerācija/vēsture, ko
+    `ItemsTable.tsx` jau rāda "Tāme" cilnē, skat. "Excel eksports:
+    pozīciju numerācija (displayCode) + VO delta kolonnas (Sesija 27)"
+    zemāk.
     Abas funkcijas pieņem opcionālu `ExportOptions` otro parametru
     (`{ includeReserveRegister?: boolean }`, noklusējums `false`) — TIKAI
     kad `true`, "IZMAIŅAS" lapai pievienota trešā "Pasūtītāja rezerve"
@@ -1505,6 +1512,83 @@ augšā). Konsolē nav kļūdu.
 - ✅ Manuāli pārbaudīts ar Playwright, ieskaitot lejupielādētā `.xlsx` faila
   satura pārbaudi ar `openpyxl` — checkbox pareizi kontrolē, vai rezerves
   tabula parādās eksportā, skaitļi precīzi sakrīt ar UI.
+
+### Excel eksports: pozīciju numerācija (displayCode) + VO delta kolonnas (Sesija 27)
+
+Sesijas 24 (skat. augšā "Pozīciju numerācija + VO izmaiņu vēsture ('Tāme'
+cilnē")) beigās apzināti ĀRPUS apjoma atstāts kandidāts — Excel eksports
+sadaļu lapās joprojām rādīja bāzes `item.code`, nevis `ItemsTable.tsx` "Tāme"
+cilnē jau redzamo atvasināto `displayCode`/VO delta ainu. Lietotājs
+apstiprināja (`AskUserQuestion`) pilnu apjomu — GAN numerāciju, GAN
+VO-specifiskās delta kolonnas (nevis tikai numerāciju) — pirms ieviešanas.
+
+**Implementēts** (`excel/export.ts`, `packages/web` netika skarts):
+`writeSectionSheet` dabū divus jaunus parametrus — `itemDisplay: Map<string,
+ItemDisplayInfo> | null` un `voColumns: { voId: string; voNumber: string }[]`
+— TIEŠI TĀ PATI aprēķina loģika, ko `ProjectEditor.tsx` jau lieto
+`ItemsTable.tsx` propām: `exportBoqToWorkbook` aprēķina `itemDisplay` VIENU
+REIZI visam projektam ar `computeItemCodesAndHistory(state.sections,
+approvedVariationOrders)` (tikai kad `hasBaseline`), un katrai sadaļai
+filtrē `sectionVoColumns` pēc tā, vai kāda šīs sadaļas pozīcija satur impact
+ar attiecīgo VO — nav jaunas core funkcijas, tikai tā paša atvasinājuma
+otrs patērētājs.
+
+- **"Nr.p.k." kolonna:** `itemDisplay?.get(item.id)?.displayCode ??
+  item.code` — pirms bāzes iesaldēšanas (`itemDisplay === null`) uzvedība
+  NEMAINĀS (rāda bāzes kodu, kā vienmēr).
+- **VO delta kolonnas:** pievienotas AIZ esošajām VARIATION_COLUMNS/
+  EXECUTION_COLUMNS grupām (nevis to vietā vai starp tām) — pozīcija
+  DINAMISKA (atkarīga no tā, vai baseline/izpilde ir/nav, un cik VO
+  relevanti tieši šai sadaļai), tāpēc platumi tiek pielietoti per-sadaļa
+  ciklā, nevis statiskā `Record<number, number>` kā `VARIATION_COLUMN_WIDTHS`/
+  `EXECUTION_COLUMN_WIDTHS`. Katra VO grupa: "VO-X ΔDaudz." (skaitlis ar
+  `QUANTITY_FORMAT`, vai teksts "JAUNS: N" jaunai pozīcijai, vai teksts "-"
+  ja VO šo pozīciju nemainīja) + "VO-X ΔEUR" (skaitlis ar `MONEY_FORMAT`, vai
+  "-"). **Apzināta atšķirība no `ItemsTable.tsx`:** UI rāda tekstuālu "+5"
+  (ar piespiedu "+" priekšā), Excel puses ΔDaudz./ΔEUR šūnas paliek PARASTI
+  SKAITĻI (bez piespiedu "+"), konsekventi ar to, kā šis fails JAU rakstīja
+  `VARIATION_COLUMNS.quantityDelta`/diff tabulas EUR deltu (skat. augšā) —
+  ļauj Excel pusē summēt/filtrēt, un neievieš jaunu formatējuma konvenciju
+  tikai šai vienai kolonnu grupai.
+- **`COLUMN_WIDTHS[TAME_COLUMNS.nrPk]` paplašināts no 7 uz 12** rakstzīmēm —
+  tā pati kļūdu klase, ko Sesija 24 jau izlaboja UI pusē (`.code-input`
+  min-width) — bez tā garāki atvasinātie kodi (piem. "21a (VO-2)") Excel
+  šaurajā kolonnā vizuāli apgrieztos. Šis platums tiek pielietots VIENMĒR
+  (arī projektiem bez VO) — tikai kosmētiska, ne-lūstoša izmaiņa.
+
+**Testi:** `test/excel.test.ts` — 2 jauni (displayCode + VO delta kolonnu
+vērtības sadaļā, kuru VO ietekmēja, tostarp revīzijas burta "izlaišana"
+neietekmētai VO, kā arī neietekmētas sadaļas regresija; "JAUNS: N" marķieris
+jaunai VO pievienotai pozīcijai). 1 esošs tests pārrakstīts — "omits
+Izpildīts/Atlikums..." iepriekš pārbaudīja fiksētu kolonnas nobīdi, kas TAGAD
+likumīgi aizņemta ar jaunu VO kolonnu tam pašam testa projektam (tam ir
+apstiprināta VO); pārrakstīts, lai pārbaudītu ar galvenes TEKSTU
+("Izpildīts"/"Atlikums" nav rindā 11), nevis pozīciju — pareizais fokuss šim
+testam vienmēr bija izpildes kolonnu neesamība, nevis konkrēta kolonnas
+nobīde. Kopā **143/143 core testi zaļi** (141 + 2 jauni).
+
+**Manuāli pārbaudīts** (pagaidu skripts ar `tsx`, tieši izsaucot
+`exportBoqToBuffer` un pārlasot rezultātu ar `exceljs`, izdzēsts pēc
+lietošanas, tāpat kā iepriekšējo sesiju konvencija): projekts ar 2 bāzes
+pozīcijām vienā sadaļā — VO-1 (+5 pozīcijai "1"), VO-2 (pievieno jaunu
+pozīciju), VO-3 (+2 pozīcijai "1"). Pozīcija "1" -> "1b" ("VO-2 burts
+izlaists", jo tā pozīciju nemainīja — tieši Sesijas 24 dokumentētā
+semantika), VO-1 kolonnā 5/30€, VO-2 kolonnā "-"/"-", VO-3 kolonnā 2/12€.
+Nemainītā pozīcija "2" -> paliek "2", visās VO kolonnās "-". Jaunā pozīcija
+-> "3 (VO-2)" (manuāli ievadītais kods ignorēts), VO-2 kolonnā "JAUNS: 3"/9€,
+pārējās "-".
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 143/143 testi zaļi (2 jauni šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi — ~192KB galvenais/~958KB excel chunk).
+- ✅ Manuāli pārbaudīts ar reālu eksportētu `.xlsx` failu (pagaidu skripts,
+  izdzēsts pēc lietošanas) — displayCode/VO delta kolonnas precīzi sakrīt ar
+  jau apstiprināto `computeItemCodesAndHistory` semantiku.
+- ⚠️ NAV pārbaudīts pārlūkā ar Playwright (šī sesija mainīja tikai
+  `packages/core`, `packages/web` UI nemainījās — eksporta poga jau
+  izsauc to pašu `exportBoqToBuffer`, kas tagad vienkārši raksta vairāk
+  kolonnu).
 
 ### Favicon
 

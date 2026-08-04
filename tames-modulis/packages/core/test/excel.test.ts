@@ -601,6 +601,77 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
     expect(sheet.getCell(14, TAME_COLUMNS.totalAll).value).toMatchObject({ result: 1300 });
   });
 
+  it("shows the derived displayCode (Nr.p.k.) and per-VO ΔDaudz./ΔEUR columns on a section sheet affected by a VO, matching ItemsTable.tsx's 'Tāme' cilne", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("1.1_Dem.")!;
+
+    // No execution records here, so VO columns follow directly after
+    // VARIATION_COLUMNS (spacer + baselineQuantity + quantityDelta ends at
+    // totalAll+3): spacer totalAll+4, ΔDaudz. totalAll+5, ΔEUR totalAll+6.
+    const quantityCol = TAME_COLUMNS.totalAll + 5;
+    const eurCol = TAME_COLUMNS.totalAll + 6;
+    expect(sheet.getCell(11, quantityCol).value).toBe("VO-1 ΔDaudz.");
+    expect(sheet.getCell(11, eurCol).value).toBe("VO-1 ΔEUR");
+
+    // item "a": bāzes kods "1", viena revīzija (VO-1 quantityDelta +30) -> "1a".
+    expect(sheet.getCell(12, TAME_COLUMNS.nrPk).value).toBe("1a");
+    expect(sheet.getCell(12, quantityCol).value).toBe(30);
+    expect(sheet.getCell(12, eurCol).value).toBe(300); // (130-100)*10
+
+    // item "b": bāzes kods "2", viena revīzija (VO-1 izslēgšana) -> "2a".
+    expect(sheet.getCell(13, TAME_COLUMNS.nrPk).value).toBe("2a");
+    expect(sheet.getCell(13, quantityCol).value).toBe(0); // izslēgšana nemaina daudzumu
+    expect(sheet.getCell(13, eurCol).value).toBe(-200); // 0 - 50*4
+
+    // item "c" (sec-2, "1.2_Jumts") - šī VO to neietekmēja, tāpēc nav VO
+    // kolonnu šajā lapā UN "Nr.p.k." paliek nemainīts bāzes kods.
+    const otherSheet = workbook.getWorksheet("1.2_Jumts")!;
+    expect(otherSheet.getCell(12, TAME_COLUMNS.nrPk).value).toBe("1");
+    let hasVoColumn = false;
+    otherSheet.getRow(11).eachCell({ includeEmpty: false }, (cell) => {
+      if (typeof cell.value === "string" && cell.value.includes("ΔDaudz.")) hasVoColumn = true;
+    });
+    expect(hasVoColumn).toBe(false);
+  });
+
+  it("shows a new-position item's ΔDaudz. cell as 'JAUNS: N' in its VO column, matching the ItemsTable.tsx marker", () => {
+    const state = sampleState();
+    state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+
+    const newItemChange: VariationOrderChange = {
+      id: "new-item-1",
+      sectionId: "sec-1",
+      itemId: null,
+      quantityDelta: 0,
+      excluded: false,
+      newSection: null,
+      newItem: {
+        code: "manual-code-ignored",
+        description: "Papildu darbs",
+        unit: "gab",
+        quantity: 4,
+        unitLaborCost: 1,
+        unitMaterialsCost: 1,
+        unitMechanismsCost: 1,
+      },
+    };
+    const vo = createVariationOrder([], { title: "Papildu pozīcija", justification: "", instructedBy: "", date: "2026-01-10" });
+    vo.status = "approved";
+    vo.changes = [newItemChange];
+    state.variationOrders = [vo];
+
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("1.1_Dem.")!;
+
+    const quantityCol = TAME_COLUMNS.totalAll + 5;
+    const eurCol = TAME_COLUMNS.totalAll + 6;
+    // sec-1 already had items "a"/"b" (rows 12-13) - new item is the 3rd, row 14.
+    expect(sheet.getCell(14, TAME_COLUMNS.nrPk).value).toBe("3 (VO-1)"); // manuāli ievadītais kods ignorēts
+    expect(sheet.getCell(14, quantityCol).value).toBe("JAUNS: 4");
+    expect(sheet.getCell(14, eurCol).value).toBe(12); // 4 * (1+1+1)
+  });
+
   it("adds an IZMAIŅAS sheet with a VO register and a diff table of changed items only", () => {
     const state = sampleStateWithApprovedVariationOrder();
     const workbook = exportBoqToWorkbook(state);
@@ -786,7 +857,15 @@ describe("exportBoqToWorkbook execution records", () => {
 
     expect(workbook.getWorksheet("IZPILDES AKTI")).toBeUndefined();
     const sheet = workbook.getWorksheet("1.1_Dem.")!;
-    expect(sheet.getCell(11, TAME_COLUMNS.totalAll + 5).value).toBeNull();
+    // Not a fixed column offset check - this project HAS an approved VO, so
+    // (as of the displayCode/VO-delta columns feature) that column position
+    // is now legitimately occupied by a "VO-1 ΔDaudz." header (see "shows
+    // the derived displayCode..." test above); what this test actually
+    // guards is that no Izpildīts/Atlikums header appears anywhere.
+    const headerTexts: unknown[] = [];
+    sheet.getRow(11).eachCell({ includeEmpty: false }, (cell) => headerTexts.push(cell.value));
+    expect(headerTexts).not.toContain("Izpildīts");
+    expect(headerTexts).not.toContain("Atlikums");
   });
 
   it("adds Izpildīts/Atlikums columns to section sheets, and an IZPILDES AKTI sheet with a register and an execution overview", () => {

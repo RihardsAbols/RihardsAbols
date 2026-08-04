@@ -4,7 +4,14 @@ import { computeExecutedToDate, computeExecutionOverview, computeExecutionRecord
 import type { BoqItem, BoqSection, BoqState } from "../models/boq.js";
 import type { ExecutionRecord } from "../models/executionRecord.js";
 import type { VariationOrder } from "../models/variationOrder.js";
-import { computeReserveBalance, computeVariationOrderDirectTotalImpact, deriveCurrentSections, diffAgainstBaseline } from "../variationOrders/deriveCurrentState.js";
+import {
+  computeItemCodesAndHistory,
+  computeReserveBalance,
+  computeVariationOrderDirectTotalImpact,
+  deriveCurrentSections,
+  diffAgainstBaseline,
+} from "../variationOrders/deriveCurrentState.js";
+import type { ItemDisplayInfo } from "../variationOrders/deriveCurrentState.js";
 import { colLetter } from "./cellValue.js";
 import { TAME_COLUMNS } from "./columns.js";
 
@@ -50,7 +57,10 @@ const COST_COLUMNS = [
 // header labels there are merged across columns 1-3 so they aren't
 // constrained by this narrow width.
 const COLUMN_WIDTHS: Record<number, number> = {
-  [TAME_COLUMNS.nrPk]: 7,
+  // 12 (not 7) so derived displayCode values (skat. "Pozīciju numerācija +
+  // VO izmaiņu vēsture", piem. "21a (VO-2)") nav vizuāli apgriezti - tā pati
+  // kļūdu klase, ko Sesija 24 jau izlaboja UI pusē (.code-input min-width).
+  [TAME_COLUMNS.nrPk]: 12,
   2: 3,
   [TAME_COLUMNS.name]: 48,
   [TAME_COLUMNS.unit]: 10,
@@ -107,6 +117,14 @@ const EXECUTION_COLUMN_WIDTHS: Record<number, number> = {
   [EXECUTION_COLUMNS.executedToDate]: 13,
   [EXECUTION_COLUMNS.remaining]: 11,
 };
+
+// Per-VO ΔDaudz./ΔEUR column widths (skat. VO_ITEM_COLUMNS zemāk) - vienādi
+// katrai VO grupai, tāpēc konstantes, nevis VARIATION_COLUMN_WIDTHS/
+// EXECUTION_COLUMN_WIDTHS stila fiksēta Record, jo šo kolonnu SKAITS un
+// POZĪCIJA atšķiras katrai sadaļas lapai (atkarīgs no tā, cik VO relevanti
+// tieši šai sadaļai) - platumi tiek pielietoti dinamiski writeSectionSheet.
+const VO_QUANTITY_COLUMN_WIDTH = 11;
+const VO_EUR_COLUMN_WIDTH = 13;
 
 /**
  * Writes the project-level header block (Projekts, Būvuzņēmēja/Pasūtītāja
@@ -199,6 +217,14 @@ function writeSignatureBlock(
  * - `null` when the project has no approved baseline yet (draft, no VO
  * feature in use), in which case those columns are omitted entirely and the
  * sheet looks exactly like before this feature existed.
+ *
+ * `itemDisplay`/`voColumns` mirror `ItemsTable.tsx`'s "Tāme" cilne (skat.
+ * CLAUDE.md "Pozīciju numerācija + VO izmaiņu vēsture (Sesija 24)") - when
+ * `itemDisplay` is non-null, the "Nr.p.k." column shows the derived
+ * displayCode instead of the raw `item.code`, and `voColumns` (this
+ * section's relevant approved VO, same filter as ProjectEditor.tsx) each add
+ * a "VO-X ΔDaudz."/"VO-X ΔEUR" column pair appended after the
+ * variation/execution column groups.
  */
 function writeSectionSheet(
   workbook: ExcelJS.Workbook,
@@ -206,6 +232,8 @@ function writeSectionSheet(
   section: BoqSection,
   state: BoqState,
   baselineSection: BoqSection | null,
+  itemDisplay: Map<string, ItemDisplayInfo> | null,
+  voColumns: { voId: string; voNumber: string }[],
 ): number {
   const sheet = workbook.addWorksheet(sheetName);
 
@@ -224,6 +252,19 @@ function writeSectionSheet(
       sheet.getColumn(Number(col)).width = width;
     }
   }
+
+  // Appended AFTER the variation/execution column groups (whichever are
+  // present) - one spacer column, then two columns per relevant VO, same
+  // "spacer, then group" layout as VARIATION_COLUMNS/EXECUTION_COLUMNS
+  // above. Position varies per sheet since `voColumns` (and whether
+  // baseline/execution groups precede it) differ per section.
+  const lastFixedCol = baselineSection ? VARIATION_COLUMNS.quantityDelta : TAME_COLUMNS.totalAll;
+  const lastBeforeVoCols = showExecution ? EXECUTION_COLUMNS.remaining : lastFixedCol;
+  const firstVoCol = lastBeforeVoCols + 2;
+  voColumns.forEach((_, i) => {
+    sheet.getColumn(firstVoCol + i * 2).width = VO_QUANTITY_COLUMN_WIDTH;
+    sheet.getColumn(firstVoCol + i * 2 + 1).width = VO_EUR_COLUMN_WIDTH;
+  });
 
   const headerLines = writeProjectHeaderBlock(
     sheet,
@@ -273,6 +314,14 @@ function writeSectionSheet(
     sheet.getCell(headerRow, EXECUTION_COLUMNS.remaining).value = "Atlikums";
     sheet.getCell(headerRow, EXECUTION_COLUMNS.remaining).font = HEADER_FONT;
   }
+  voColumns.forEach((col, i) => {
+    const quantityCol = firstVoCol + i * 2;
+    const eurCol = quantityCol + 1;
+    sheet.getCell(headerRow, quantityCol).value = `${col.voNumber} ΔDaudz.`;
+    sheet.getCell(headerRow, quantityCol).font = HEADER_FONT;
+    sheet.getCell(headerRow, eurCol).value = `${col.voNumber} ΔEUR`;
+    sheet.getCell(headerRow, eurCol).font = HEADER_FONT;
+  });
 
   const baselineItemsById = baselineSection ? new Map(baselineSection.items.map((item) => [item.id, item])) : null;
   const firstDataRow = headerRow + 1;
@@ -290,7 +339,7 @@ function writeSectionSheet(
     const row = firstDataRow + i;
     const costs = calculateItemCosts(item);
 
-    sheet.getCell(row, TAME_COLUMNS.nrPk).value = item.code;
+    sheet.getCell(row, TAME_COLUMNS.nrPk).value = itemDisplay?.get(item.id)?.displayCode ?? item.code;
     const nameCell = sheet.getCell(row, TAME_COLUMNS.name);
     nameCell.value = item.description;
     nameCell.alignment = { wrapText: true, vertical: "top" };
@@ -334,6 +383,26 @@ function writeSectionSheet(
       remainingCell.value = computeRemainingQuantity(item.quantity, executedToDate);
       remainingCell.numFmt = QUANTITY_FORMAT;
     }
+
+    const impacts = itemDisplay?.get(item.id)?.impacts ?? [];
+    voColumns.forEach((col, voColIndex) => {
+      const impact = impacts.find((i) => i.voId === col.voId);
+      const quantityCell = sheet.getCell(row, firstVoCol + voColIndex * 2);
+      const eurCell = sheet.getCell(row, firstVoCol + voColIndex * 2 + 1);
+      if (!impact) {
+        quantityCell.value = "-";
+        eurCell.value = "-";
+      } else if (impact.isNew) {
+        quantityCell.value = `JAUNS: ${impact.quantityDelta}`;
+        eurCell.value = impact.directTotalDelta;
+        eurCell.numFmt = MONEY_FORMAT;
+      } else {
+        quantityCell.value = impact.quantityDelta;
+        quantityCell.numFmt = QUANTITY_FORMAT;
+        eurCell.value = impact.directTotalDelta;
+        eurCell.numFmt = MONEY_FORMAT;
+      }
+    });
 
     sheet.getCell(row, TAME_COLUMNS.unitLabor).value = item.unitLaborCost;
     sheet.getCell(row, TAME_COLUMNS.unitMaterials).value = item.unitMaterialsCost;
@@ -784,6 +853,13 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
   // it. A section with no baseline counterpart (the new one itself) gets
   // `null` here, same as the whole no-baseline-yet case.
   const baselineSectionsById = new Map(state.sections.map((s) => [s.id, s]));
+  // Same computation as ProjectEditor.tsx's `itemDisplay` - derived ONCE over
+  // the whole bāze + approved VO list (skat. "Pozīciju numerācija + VO
+  // izmaiņu vēsture (Sesija 24)"), so section sheets show the same displayCode/
+  // VO-delta columns as the "Tāme" cilne. `null` (not just an empty Map)
+  // when there's no baseline yet, matching the same `hasBaseline` gate used
+  // everywhere else in this function.
+  const itemDisplay = hasBaseline ? computeItemCodesAndHistory(state.sections, approvedVariationOrders) : null;
 
   const boqSummary = summarizeBoq(exportState);
   const firstSectionRow = tableHeaderRow + 1;
@@ -798,7 +874,16 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
     const baselineSection = hasBaseline
       ? (baselineSectionsById.get(section.id) ?? { id: section.id, name: section.name, estimateNumber: section.estimateNumber, items: [] })
       : null;
-    const directTotalRow = writeSectionSheet(workbook, sheetName, section, exportState, baselineSection);
+    // This section's relevant approved VO (same filter as ProjectEditor.tsx
+    // voColumns) - only VO that actually changed/added an item IN this
+    // section get a column pair here, so an unaffected section's sheet
+    // doesn't grow empty "-" columns for every VO in the whole project.
+    const sectionVoColumns = itemDisplay
+      ? approvedVariationOrders
+          .filter((vo) => section.items.some((item) => itemDisplay.get(item.id)?.impacts.some((impact) => impact.voId === vo.id)))
+          .map((vo) => ({ voId: vo.id, voNumber: vo.number }))
+      : [];
+    const directTotalRow = writeSectionSheet(workbook, sheetName, section, exportState, baselineSection, itemDisplay, sectionVoColumns);
     const row = firstSectionRow + i;
     const sectionSummary = boqSummary.sections[i];
 

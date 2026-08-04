@@ -1728,17 +1728,67 @@ VO-2: 20/0/20/40) — sakrīt precīzi ar UI kopsavilkumu. Konsolē nav kļūdu.
   faila satura pārbaudi ar `openpyxl` — checkbox pareizi kontrolē
   eksportu, skaitļi sakrīt ar UI.
 
+## Sesija 27: Excel eksports — pozīciju numerācija (displayCode) + VO delta kolonnas — ✅ pabeigts
+
+**Uzdevums:** viens no diviem Sesijas 24 beigās apzināti ārpus apjoma
+atstātajiem kandidātiem (skat. iepriekšējais "IESPĒJAMIE NĀKAMIE SOĻI"
+ieraksts) — lietotājs pirms sesijas sākuma apstiprināja `AskUserQuestion`
+ar, ka konkrētais uzdevums ir tieši šis: Excel eksports sadaļu lapās
+joprojām rādīja bāzes `item.code`, nevis "Tāme" cilnē (`ItemsTable.tsx`)
+jau redzamo atvasināto `displayCode`. Otrs precizējošs `AskUserQuestion`
+(pirms ieviešanas) apstiprināja PILNU apjomu — gan numerāciju, gan
+VO-specifiskās "ΔDaudz."/"ΔEUR" delta kolonnas katrai relevantajai VO
+(nevis tikai numerāciju vien).
+
+**Implementēts:** skat. CLAUDE.md "Excel eksports: pozīciju numerācija
+(displayCode) + VO delta kolonnas (Sesija 27)" pilnu tehnisko aprakstu —
+`excel/export.ts` `writeSectionSheet` dabū `itemDisplay`/`voColumns`
+parametrus, kas atkārtoti izmanto TIEŠI TO PAŠU
+`computeItemCodesAndHistory` atvasinājumu un per-sadaļa filtru, ko
+`ProjectEditor.tsx` jau aprēķina `ItemsTable.tsx` propām — nav jaunas core
+funkcijas. "Nr.p.k." kolonna rāda `displayCode` (nemainīga uzvedība pirms
+bāzes iesaldēšanas). VO delta kolonnu grupas pievienotas AIZ esošajām
+VARIATION_COLUMNS/EXECUTION_COLUMNS grupām, dinamiskā pozīcijā (atkarīga no
+tā, kuras iepriekšējās grupas klāt). `COLUMN_WIDTHS[TAME_COLUMNS.nrPk]`
+paplašināts 7 -> 12 (tā pati kļūdu klase, ko Sesija 24 jau izlaboja UI
+pusē).
+
+**Testi:** `test/excel.test.ts` — 2 jauni (displayCode + VO delta kolonnu
+vērtības, revīzijas burta pareiza "izlaišana" neietekmētai VO, neietekmētas
+sadaļas regresija, "JAUNS: N" marķieris jaunai pozīcijai). 1 esošs tests
+pārrakstīts, jo tā iepriekšējā pārbaude (fiksēta kolonnas nobīde) vairs
+nebija pareizais fokuss — tagad pārbauda ar galvenes tekstu, ne pozīciju.
+Kopā **143/143 core testi zaļi** (141 + 2 jauni).
+
+**Manuāli pārbaudīts** (pagaidu skripts ar `tsx`, tieši izsaucot
+`exportBoqToBuffer` un pārlasot rezultātu ar `exceljs`, izdzēsts pēc
+lietošanas): projekts ar 2 bāzes pozīcijām, 3 apstiprinātām VO (2 maina
+esošu pozīciju, 1 pievieno jaunu) — displayCode ("1b" ar pareizi izlaistu
+"VO-2" burtu, "3 (VO-2)" jaunai pozīcijai) un VO delta kolonnu vērtības
+(skaitliski, ieskaitot "JAUNS: 3" marķieri) precīzi sakrita ar jau
+apstiprināto `computeItemCodesAndHistory` semantiku.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 143/143 testi zaļi (2 jauni šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar reālu eksportētu `.xlsx` failu (tiešs
+  `exportBoqToBuffer` izsaukums + `exceljs` pārlasīšana).
+- ⚠️ NAV pārbaudīts pārlūkā ar Playwright — šī sesija mainīja tikai
+  `packages/core`, `packages/web` UI (eksporta poga) nemainījās un jau
+  izsauc to pašu `exportBoqToBuffer`.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Sesijas 25 un 26 pabeigtas** (ieskaitot rezerves reģistra Excel eksporta
-papildinājumu). Šobrīd nav zināma neapstiprināta kandidāta.
+**Sesijas 25, 26 un 27 pabeigtas.** Šobrīd nav zināma neapstiprināta
+kandidāta.
 
-**Joprojām apzināti ārpus apjoma (no Sesijas 24):** Excel eksporta
-paplašināšana ar tām pašām atvasinātās numerācijas/VO-delta kolonnām, ko
-Sesija 24 pievienoja TIKAI web UI; `VariationOrders.tsx` VO kartes izmaiņu
-tabulas atjaunināšana, lai arī tā rādītu atvasināto displayCode.
+**Joprojām apzināti ārpus apjoma (no Sesijas 24, Sesijā 27 NEIZLABOTS):**
+`VariationOrders.tsx` VO kartes izmaiņu tabulas atjaunināšana, lai arī tā
+rādītu atvasināto displayCode (Excel eksporta puse tagad IR izlabota
+Sesijā 27 — šis ir vienīgais atlikušais Sesijas 24 kandidāts).
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-26) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
+Sesijas 18-27) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
 konkrēts nākamais uzdevums - nav gatava kandidātu saraksta, ko piedāvāt
 bez papildu konteksta no lietotāja.
