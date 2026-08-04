@@ -1536,6 +1536,24 @@ npm run dev:web                # Vite dev serveris (packages/web)
 npm run build:web              # production build (typecheck + vite build)
 ```
 
+### Lietotāja lokālā vide (manuāla pārbaude pārlūkā)
+
+Lietotājam ir lokāla repo kopija Windows datorā:
+**`%USERPROFILE%\Documents\RihardsAbols`**. Lietotājs PATS palaiž
+`npm run dev:web` un atver `http://localhost:5173/` savā pārlūkā, lai
+manuāli izmēģinātu izmaiņas — **nav jautāt/jāatgādina šī informācija katru
+reizi**, lietotājs to zina un pats pieprasīs manuālu pārbaudi, kad būs
+gatavs. Ja lietotājs pajautā "vai varu pats izmēģināt pārlūkā" vai līdzīgi,
+atbilde vienmēr ir: jā, `cd %USERPROFILE%\Documents\RihardsAbols\tames-modulis`,
+`npm run dev:web`, atvērt `http://localhost:5173/`.
+
+Šajā (mākoņa/CI) sesijas vidē manuālā pārbaude pārlūkā notiek ar
+Playwright + jau instalēto Chromium (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`,
+`--headless=new` karogs, skat. iepriekšējo sesiju piemērus PROGRESS.md) —
+instalē `playwright-core` pagaidām (`npm install --no-save playwright-core`
+attiecīgajā pakotnē), izmanto, un pēc pārbaudes noņem, tāpat kā katrā
+iepriekšējā sesijā.
+
 ## Konvencijas
 
 - Visi `packages/core` publiski eksportētie tipi/funkcijas iet caur
