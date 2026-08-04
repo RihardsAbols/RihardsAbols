@@ -101,6 +101,7 @@ export function createVariationOrder(existing: VariationOrder[], input: CreateVa
     status: "proposed",
     statusDate: null,
     voidedReason: null,
+    reserveDrawdown: 0,
     changes: [],
     createdAt: now,
     updatedAt: now,
@@ -168,6 +169,69 @@ export function computeVariationOrderDirectTotalImpact(
 
   const sum = (sections: BoqSection[]) => sections.reduce((total, section) => total + calculateSectionDirectTotal(section), 0);
   return sum(after) - sum(before);
+}
+
+/** Vienas VO ieguldījums/izmantojums "Pasūtītāja rezervē" - skat. computeReserveBalance. */
+export interface ReserveEntry {
+  voId: string;
+  voNumber: string;
+  voTitle: string;
+  /** Šīs VO finansiālā ietekme (EUR) - tas pats, ko atgriež computeVariationOrderDirectTotalImpact. Negatīva = ietaupījums, pozitīva = papildu izmaksas. */
+  directTotalImpact: number;
+  /** Summa, ko šī VO PAPILDINA rezervei (|impact|, ja impact < 0 - citādi 0). */
+  contribution: number;
+  /** Summa, ko šī VO IZMANTO no rezerves (vo.reserveDrawdown, TIKAI ja impact > 0 - VO ar ietaupījumu drawdown netiek uzskaitīts, pat ja lauks kļūdaini iestatīts). */
+  drawdown: number;
+  /** Kumulatīvais rezerves atlikums TŪLĪT PĒC šīs VO. */
+  balanceAfter: number;
+}
+
+export interface ReserveBalance {
+  /** Viena rinda katrai APSTIPRINĀTAI (un neanulētai) VO, VO secībā - tāpat kā deriveCurrentState, anulētas/noraidītas/vēl "proposed" VO neietekmē. */
+  entries: ReserveEntry[];
+  totalAccumulated: number;
+  totalDrawn: number;
+  /** totalAccumulated - totalDrawn - pieejamā summa nākamajām VO. */
+  available: number;
+}
+
+/**
+ * "Pasūtītāja rezerve" (skat. CLAUDE.md "Pasūtītāja rezerve (Sesija 26)") -
+ * VO ceļā izslēgto/samazināto pozīciju ietaupītās vērtības uzkrājums, ko
+ * vēlāk var izmantot jaunu papildu darbu segšanai. Pilnībā ATVASINĀTS
+ * (tāpat kā "pašreizējais" stāvoklis) - VIENĪGAIS tieši ievadāmais lauks ir
+ * VariationOrder.reserveDrawdown (cik daudz no savas POZITĪVĀS ietekmes šī
+ * VO izmanto no rezerves), uzkrāšanas puse nav manuāli jāatzīmē katram
+ * izslēgumam atsevišķi.
+ *
+ * INFORMATĪVS pārskats - NEIETEKMĒ tāmes pašu "Pavisam"/"KOPĀ AR PVN" summu
+ * (kas jau pareizi atspoguļo visu apstiprināto VO derivāciju neatkarīgi no
+ * šīs funkcijas) - tikai rāda, cik no papildu darbu izmaksām jau ir "segts"
+ * ar iepriekšēju ietaupījumu, noderīgi pasūtītāja pārskatiem/sarunām.
+ *
+ * `variationOrders` jāpadod PILNS saraksts (ne tikai apstiprinātās) - tāpat
+ * kā computeVariationOrderDirectTotalImpact, katrai VO vajadzīgs tās secības
+ * konteksts pilnajā masīvā, lai pareizi aprēķinātu ietekmi.
+ */
+export function computeReserveBalance(baseline: BoqSection[], variationOrders: VariationOrder[]): ReserveBalance {
+  const approved = variationOrders.filter((vo) => vo.status === "approved");
+
+  const entries: ReserveEntry[] = [];
+  let running = 0;
+  let totalAccumulated = 0;
+  let totalDrawn = 0;
+
+  for (const vo of approved) {
+    const impact = computeVariationOrderDirectTotalImpact(baseline, variationOrders, vo.id);
+    const contribution = impact < 0 ? -impact : 0;
+    const drawdown = impact > 0 ? vo.reserveDrawdown : 0;
+    running += contribution - drawdown;
+    totalAccumulated += contribution;
+    totalDrawn += drawdown;
+    entries.push({ voId: vo.id, voNumber: vo.number, voTitle: vo.title, directTotalImpact: impact, contribution, drawdown, balanceAfter: running });
+  }
+
+  return { entries, totalAccumulated, totalDrawn, available: running };
 }
 
 export interface BoqItemDiffRow {

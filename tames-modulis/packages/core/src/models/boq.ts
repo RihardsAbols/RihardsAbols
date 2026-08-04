@@ -101,6 +101,10 @@ export interface BoqState {
   updatedAt: string;
 }
 
+// v9 pievienoja VariationOrder.reserveDrawdown (EUR summa, ko VO izmanto no
+// atvasinātās "Pasūtītāja rezerves" - uzkrātas no izslēgtu/samazinātu
+// pozīciju ietaupījuma, skat. variationOrders/deriveCurrentState.ts
+// computeReserveBalance un CLAUDE.md "Pasūtītāja rezerve (Sesija 26)").
 // v8 pievienoja ExecutionRecord.voidedAt/voidedReason un
 // VariationOrder.voidedReason (VariationOrderStatus jauna vērtība "voided") -
 // izpildes aktu/VO ANULĒŠANA kā korekcijas mehānisms kļūdainam ierakstam
@@ -119,7 +123,7 @@ export interface BoqState {
 // `unitPrice` with a darba alga/materiāli/mehānismi split and added
 // overheadRate/profitRate, matching the Līguma tāme format used by the
 // izpildes-akts-validacija skill (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;

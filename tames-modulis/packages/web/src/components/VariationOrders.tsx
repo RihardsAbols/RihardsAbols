@@ -1,6 +1,7 @@
 import {
   computeExecutedToDate,
   computeRemainingQuantity,
+  computeReserveBalance,
   computeVariationOrderDirectTotalImpact,
   createVariationOrder,
   deriveCurrentSections,
@@ -103,6 +104,10 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = deriveCurrentSections(state.sections, approvedVariationOrders);
   const diffRows = diffAgainstBaseline(state.sections, currentSections);
+  // "Pasūtītāja rezerve" atlikums NO VISĀM APSTIPRINĀTAJĀM VO - tas pats
+  // skaitlis, kas jārāda kā "pieejamais atlikums" jebkurai VĒL "proposed" VO
+  // (tā vēl neietekmē šo aprēķinu, skat. computeReserveBalance).
+  const reserveBalance = computeReserveBalance(state.sections, state.variationOrders);
 
   // Sadaļas/pozīcijas, kas pieejamas IZMAIŅAS PIEVIENOŠANAS formai konkrētai
   // (vienmēr "proposed") VO - bāze + apstiprinātās VO + ŠĪS VO PAŠAS jau
@@ -127,6 +132,14 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
     onUpdate((s) => ({
       ...s,
       variationOrders: s.variationOrders.map((vo) => (vo.id === voId ? { ...vo, status, statusDate: now, updatedAt: now } : vo)),
+    }));
+  };
+
+  const handleSetReserveDrawdown = (voId: string, value: number) => {
+    const now = new Date().toISOString();
+    onUpdate((s) => ({
+      ...s,
+      variationOrders: s.variationOrders.map((vo) => (vo.id === voId ? { ...vo, reserveDrawdown: value, updatedAt: now } : vo)),
     }));
   };
 
@@ -283,6 +296,34 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
             {vo.justification && <p className="vo-justification-text">{vo.justification}</p>}
             {vo.status === "voided" && vo.voidedReason && (
               <p className="vo-justification-text">Anulēšanas iemesls: {vo.voidedReason}</p>
+            )}
+
+            {vo.status === "proposed" && impact > 0 && (
+              <div className="vo-reserve-drawdown">
+                <label>
+                  Segt no Pasūtītāja rezerves (€)
+                  <input
+                    type="number"
+                    min="0"
+                    value={vo.reserveDrawdown}
+                    onChange={(e) => handleSetReserveDrawdown(vo.id, Number(e.target.value))}
+                  />
+                </label>
+                <span className="hint">Pieejamais atlikums šobrīd: {eur(reserveBalance.available)}</span>
+                {vo.reserveDrawdown > 0 && vo.reserveDrawdown > reserveBalance.available && (
+                  <p className="vo-reserve-warning">
+                    ⚠ Uzmanību: {eur(vo.reserveDrawdown)} pārsniedz pieejamo rezerves atlikumu ({eur(reserveBalance.available)}).
+                  </p>
+                )}
+                {vo.reserveDrawdown > impact && (
+                  <p className="vo-reserve-warning">
+                    ⚠ Uzmanību: {eur(vo.reserveDrawdown)} pārsniedz šīs VO pašas izmaksu ietekmi ({eur(impact)}).
+                  </p>
+                )}
+              </div>
+            )}
+            {vo.status === "approved" && vo.reserveDrawdown > 0 && (
+              <p className="vo-justification-text">Segts no Pasūtītāja rezerves: {eur(vo.reserveDrawdown)}</p>
             )}
 
             {vo.changes.length > 0 && (
@@ -519,6 +560,44 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
           </div>
         );
       })}
+
+      <h3>Pasūtītāja rezerve</h3>
+      <p className="hint">
+        Izslēgto/samazināto pozīciju ietaupītā vērtība, ko var izmantot jaunu papildu darbu segšanai - INFORMATĪVS pārskats,
+        neietekmē tāmes Pavisam/KOPĀ AR PVN summu.
+      </p>
+      <p className="vo-reserve-summary">
+        Uzkrāts: {eur(reserveBalance.totalAccumulated)} · Izmantots: {eur(reserveBalance.totalDrawn)} · Atlikums:{" "}
+        <strong>{eur(reserveBalance.available)}</strong>
+      </p>
+      {reserveBalance.entries.length === 0 ? (
+        <p className="hint">Vēl nav apstiprinātu VO, kas ietekmētu rezervi.</p>
+      ) : (
+        <table className="vo-reserve-table">
+          <thead>
+            <tr>
+              <th>VO</th>
+              <th>Nosaukums</th>
+              <th>Ietekme</th>
+              <th>Papildina rezervi</th>
+              <th>Izmanto no rezerves</th>
+              <th>Atlikums pēc</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reserveBalance.entries.map((entry) => (
+              <tr key={entry.voId}>
+                <td>{entry.voNumber}</td>
+                <td>{entry.voTitle}</td>
+                <td>{eur(entry.directTotalImpact)}</td>
+                <td>{entry.contribution > 0 ? eur(entry.contribution) : "-"}</td>
+                <td>{entry.drawdown > 0 ? eur(entry.drawdown) : "-"}</td>
+                <td>{eur(entry.balanceAfter)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       <h3>Mainītās pozīcijas (bāze → pašreizējais)</h3>
       {diffRows.length === 0 ? (

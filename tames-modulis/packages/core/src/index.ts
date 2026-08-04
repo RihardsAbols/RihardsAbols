@@ -9,7 +9,7 @@ export {
   DEFAULT_DISCOUNT_RATE,
 } from "./models/boq.js";
 export type { VariationOrder, VariationOrderChange, VariationOrderStatus } from "./models/variationOrder.js";
-export type { BoqItemDiffRow, CreateVariationOrderInput, ItemVoImpact, ItemDisplayInfo } from "./variationOrders/deriveCurrentState.js";
+export type { BoqItemDiffRow, CreateVariationOrderInput, ItemVoImpact, ItemDisplayInfo, ReserveEntry, ReserveBalance } from "./variationOrders/deriveCurrentState.js";
 export {
   deriveCurrentSections,
   deriveCurrentState,
@@ -19,6 +19,7 @@ export {
   computeVariationOrderDirectTotalImpact,
   diffAgainstBaseline,
   computeItemCodesAndHistory,
+  computeReserveBalance,
 } from "./variationOrders/deriveCurrentState.js";
 export type { ExecutionRecord, ExecutionRecordEntry } from "./models/executionRecord.js";
 export type { CreateExecutionRecordInput, ExecutionOverviewRow } from "./executionRecords/executionRecords.js";

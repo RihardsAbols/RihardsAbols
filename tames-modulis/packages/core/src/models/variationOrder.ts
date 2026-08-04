@@ -73,6 +73,18 @@ export interface VariationOrder {
   statusDate: string | null;
   /** Anulēšanas iemesls (brīvs teksts), ja status === "voided" - citādi null. */
   voidedReason: string | null;
+  /**
+   * EUR summa, ko šī VO izmanto no "Pasūtītāja rezerves" (skat.
+   * variationOrders/deriveCurrentState.ts `computeReserveBalance`) - jēgpilna
+   * TIKAI VO ar POZITĪVU finansiālo ietekmi (papildu darbi), noklusējums 0
+   * (neizmanto rezervi). Rediģējama TIKAI, kamēr `status === "proposed"` -
+   * tāpat kā pārējie VO lauki, kļūdu pēc apstiprināšanas labo ar anulēšanu +
+   * jaunu VO (skat. "Izpildes aktu/VO anulēšana"), nevis tiešu rediģēšanu.
+   * Rezerves UZKRĀŠANA (no izslēgtām/samazinātām pozīcijām) paliek pilnībā
+   * ATVASINĀTA - šis lauks ir vienīgā tieši ievadāmā daļa, tikai
+   * IZMANTOŠANAS pusei.
+   */
+  reserveDrawdown: number;
   changes: VariationOrderChange[];
   createdAt: string;
   updatedAt: string;

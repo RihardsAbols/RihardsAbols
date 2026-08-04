@@ -233,7 +233,7 @@ describe("migrateToCurrent", () => {
     const migrated = migrateToCurrent(v5);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(migrated.baselineApprovedAt).toBe("2025-12-01T00:00:00.000Z");
-    expect(migrated.variationOrders).toEqual([{ ...vo, voidedReason: null }]);
+    expect(migrated.variationOrders).toEqual([{ ...vo, voidedReason: null, reserveDrawdown: 0 }]);
   });
 
   it("defaults executionRecords and backfills newSection: null on existing VO changes when migrating v6 data", () => {
@@ -430,6 +430,83 @@ describe("migrateToCurrent", () => {
     expect(migrated.executionRecords[0].voidedAt).toBe("2026-02-01T00:00:00.000Z");
     expect(migrated.executionRecords[0].voidedReason).toBe("Kļūdains skaitlis");
     expect(migrated.variationOrders[0].voidedReason).toBe("Nepareizs daudzums");
+  });
+
+  it("defaults reserveDrawdown on VO when migrating v8 data", () => {
+    const v8 = {
+      schemaVersion: 8,
+      projectId: "proj-17",
+      projectName: "v8 bez reserveDrawdown",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          voidedReason: null,
+          changes: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v8);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0]).toMatchObject({ reserveDrawdown: 0 });
+  });
+
+  it("preserves an already-present reserveDrawdown during v8->v9 migration", () => {
+    const v8 = {
+      schemaVersion: 8,
+      projectId: "proj-18",
+      projectName: "v8 ar jau iestatītu reserveDrawdown",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          voidedReason: null,
+          reserveDrawdown: 1250.5,
+          changes: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v8);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0].reserveDrawdown).toBe(1250.5);
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {

@@ -3,6 +3,7 @@ import type { BoqItem, BoqSection } from "../src/models/boq.js";
 import type { VariationOrder, VariationOrderChange } from "../src/models/variationOrder.js";
 import {
   computeItemCodesAndHistory,
+  computeReserveBalance,
   computeVariationOrderDirectTotalImpact,
   createVariationOrder,
   deriveCurrentSections,
@@ -55,6 +56,7 @@ function vo(overrides: Partial<VariationOrder> = {}): VariationOrder {
     status: "approved",
     statusDate: "2026-01-02",
     voidedReason: null,
+    reserveDrawdown: 0,
     changes: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -283,6 +285,91 @@ describe("computeVariationOrderDirectTotalImpact", () => {
   it("returns 0 for an unknown VO id", () => {
     const baseline = [section([item()])];
     expect(computeVariationOrderDirectTotalImpact(baseline, [], "missing")).toBe(0);
+  });
+});
+
+describe("computeReserveBalance", () => {
+  it("accumulates the excluded item's baseline value as available reserve", () => {
+    const baseline = [section([item({ quantity: 10, unitLaborCost: 2, unitMaterialsCost: 3, unitMechanismsCost: 1 })])];
+    const target = vo({ id: "vo-1", status: "approved", changes: [change({ excluded: true })] });
+
+    const balance = computeReserveBalance(baseline, [target]);
+
+    expect(balance.entries).toEqual([
+      expect.objectContaining({ voId: "vo-1", directTotalImpact: -60, contribution: 60, drawdown: 0, balanceAfter: 60 }),
+    ]);
+    expect(balance.totalAccumulated).toBe(60);
+    expect(balance.totalDrawn).toBe(0);
+    expect(balance.available).toBe(60);
+  });
+
+  it("draws down the reserve via a later VO's reserveDrawdown, only up to what that VO explicitly requests", () => {
+    const baseline = [section([item({ id: "item-1", quantity: 10, unitLaborCost: 2, unitMaterialsCost: 3, unitMechanismsCost: 1 })])];
+    const savings = vo({ id: "vo-1", number: "VO-1", status: "approved", changes: [change({ excluded: true })] });
+    const addition = vo({
+      id: "vo-2",
+      number: "VO-2",
+      status: "approved",
+      reserveDrawdown: 20,
+      changes: [
+        change({
+          id: "c2",
+          itemId: null,
+          newItem: { code: "2.1", description: "Papildu pozīcija", unit: "gab", quantity: 4, unitLaborCost: 2, unitMaterialsCost: 2, unitMechanismsCost: 1 },
+        }),
+      ],
+    });
+
+    const balance = computeReserveBalance(baseline, [savings, addition]);
+
+    // savings: -60 impact -> +60 contribution. addition: +20 impact (4 * 5), reserveDrawdown 20 fully applied.
+    expect(balance.entries).toEqual([
+      expect.objectContaining({ voId: "vo-1", contribution: 60, drawdown: 0, balanceAfter: 60 }),
+      expect.objectContaining({ voId: "vo-2", directTotalImpact: 20, contribution: 0, drawdown: 20, balanceAfter: 40 }),
+    ]);
+    expect(balance.totalAccumulated).toBe(60);
+    expect(balance.totalDrawn).toBe(20);
+    expect(balance.available).toBe(40);
+  });
+
+  it("does not clamp drawdown to the available balance - a VO can draw more than is available, available goes negative", () => {
+    const baseline = [section([item({ id: "item-1", quantity: 10, unitLaborCost: 1, unitMaterialsCost: 0, unitMechanismsCost: 0 })])];
+    const addition = vo({
+      id: "vo-1",
+      status: "approved",
+      reserveDrawdown: 500,
+      changes: [change({ quantityDelta: 5 })], // +5 impact
+    });
+
+    const balance = computeReserveBalance(baseline, [addition]);
+
+    expect(balance.available).toBe(-500);
+  });
+
+  it("ignores reserveDrawdown on a VO whose own impact is negative (a savings VO), even if the field is set", () => {
+    const baseline = [section([item({ id: "item-1", quantity: 10, unitLaborCost: 2, unitMaterialsCost: 3, unitMechanismsCost: 1 })])];
+    const savings = vo({ id: "vo-1", status: "approved", reserveDrawdown: 999, changes: [change({ excluded: true })] });
+
+    const balance = computeReserveBalance(baseline, [savings]);
+
+    expect(balance.entries[0]).toMatchObject({ drawdown: 0 });
+    expect(balance.totalDrawn).toBe(0);
+    expect(balance.available).toBe(60);
+  });
+
+  it("skips proposed/rejected/voided VOs, same filter as deriveCurrentState", () => {
+    const baseline = [section([item({ id: "item-1", quantity: 10, unitLaborCost: 2, unitMaterialsCost: 3, unitMechanismsCost: 1 })])];
+    const proposed = vo({ id: "vo-1", status: "proposed", changes: [change({ excluded: true })] });
+
+    const balance = computeReserveBalance(baseline, [proposed]);
+
+    expect(balance.entries).toEqual([]);
+    expect(balance.available).toBe(0);
+  });
+
+  it("returns a zero balance for a project with no variation orders", () => {
+    const baseline = [section([item()])];
+    expect(computeReserveBalance(baseline, [])).toEqual({ entries: [], totalAccumulated: 0, totalDrawn: 0, available: 0 });
   });
 });
 

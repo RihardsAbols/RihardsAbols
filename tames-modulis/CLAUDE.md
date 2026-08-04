@@ -19,8 +19,10 @@ Npm workspace ar divām pakotnēm:
   aktu uzskaite, skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/models/variationOrder.ts` — `VariationOrder`/`VariationOrderChange`
   tipi, ieskaitot `VariationOrderChange.newSection` (VO var izveidot
-  pavisam jaunu sadaļu, ne tikai pozīciju esošā) — skat. "Tāmes izmaiņu
-  (Variation Order) vadība" zemāk.
+  pavisam jaunu sadaļu, ne tikai pozīciju esošā) un
+  `VariationOrder.reserveDrawdown` (EUR summa, ko VO izmanto no atvasinātās
+  "Pasūtītāja rezerves", skat. "Pasūtītāja rezerve (Sesija 26)" zemāk) —
+  skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/models/executionRecord.ts` — `ExecutionRecord`/`ExecutionRecordEntry`
   tipi (izpildes akts par vienu atskaites periodu) — skat. "Tāmes izmaiņu
   (Variation Order) vadība" zemāk.
@@ -31,8 +33,10 @@ Npm workspace ar divām pakotnēm:
   `computeVariationOrderDirectTotalImpact`, `diffAgainstBaseline`,
   `computeItemCodesAndHistory` (atvasinātā N.p.k. numerācija + katras VO
   izolētā ietekme uz katru pozīciju, skat. "Pozīciju numerācija + VO
-  izmaiņu vēsture (Sesija 24)" zemāk) — skat. "Tāmes izmaiņu (Variation
-  Order) vadība" zemāk pilnu semantiku.
+  izmaiņu vēsture (Sesija 24)" zemāk), `computeReserveBalance` ("Pasūtītāja
+  rezerve" uzkrāšanas/izmantošanas atvasinājums, skat. "Pasūtītāja rezerve
+  (Sesija 26)" zemāk) — skat. "Tāmes izmaiņu (Variation Order) vadība"
+  zemāk pilnu semantiku.
 - `src/executionRecords/executionRecords.ts` — `computeExecutedToDate`
   (kumulatīvais izpildītais daudzums no visiem periodiem, izlaižot
   anulētos aktus), `computeRemainingQuantity`, `createExecutionRecord`,
@@ -178,7 +182,8 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
 - `src/components/VariationOrders.tsx` — "Izmaiņu" cilnes saturs (VO
   izveide/apstiprināšana/noraidīšana, izmaiņu pievienošana — ieskaitot
   jaunas sadaļas izveidi, atlikuma rādīšana pirms izmaiņas pievienošanas,
-  diff skats) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  diff skats, "Pasūtītāja rezerve" kopsavilkums/reģistrs un tās izmantošanas
+  ievade katrai VO) — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/components/ExecutionRecords.tsx` — "Izpildes akti" cilnes saturs
   (jauna izpildes akta ievade pa sadaļām ar izpildīts/atlikums kolonnām,
   aktu vēsture, izpildes akta Excel imports ar priekšskata/sasaistes soli)
@@ -1352,6 +1357,105 @@ nav kļūdu nevienā solī.
   persistence pēc lapas pārlādes, regresija projektam bez VO, konsolē nav
   kļūdu, tāpat instalēts/noņemts tikai pagaidu pārbaudei kā iepriekšējās
   sesijās.
+
+### Pasūtītāja rezerve (Sesija 26)
+
+Lietotāja ideja: VO ceļā izslēgto/samazināto pozīciju ietaupītā vērtība
+šobrīd vienkārši pazūd (samazina "Tiešās izmaksas" un neko neatstāj aiz
+sevis) — vajadzīgs mehānisms, kas šo vērtību uzkrāj atsevišķi, lai vēlāk,
+kad rodas jauni papildu darbi, to varētu izmantot segšanai (FIDIC
+"Provisional Sum" stila jēdziens, bet atvasināts no izslēgumiem, nevis
+iepriekš noteikts budžets). Lēmumi apstiprināti ar lietotāju
+(`AskUserQuestion`, 4 jautājumi) PIRMS ieviešanas:
+
+- **Avots:** ABAS izmaiņas — pilna izslēgšana (`excluded`) UN daudzuma
+  samazinājums (`quantityDelta < 0`) — papildina rezervi, ne tikai pilna
+  izslēgšana.
+- **Ietekme uz summu:** TIKAI informatīvs pārskats — tāmes "Pavisam"/"KOPĀ
+  AR PVN" paliek NEMAINĪTA (jau pareizi atspoguļo visu apstiprināto VO
+  derivāciju), rezerve ir atsevišķs reģistrs blakus.
+- **Izmantošana:** MANUĀLA/skaidra darbība — lietotājs katrai VO ar
+  pozitīvu ietekmi var atzīmēt konkrētu EUR summu "segt no rezerves",
+  NEVIS automātiska.
+- **UI:** integrēts esošajā "Izmaiņas (VO)" cilnē, nevis jauna cilne.
+
+**Datu modelis (`schemaVersion` `8 -> 9`):** `VariationOrder.
+reserveDrawdown: number` (noklusējums 0) — VIENĪGAIS jaunais, tieši
+ievadāmais lauks, un TIKAI izmantošanas pusei. Pati UZKRĀŠANA paliek
+pilnībā ATVASINĀTA (nav manuāli jāatzīmē katrs izslēgums), konsekventi ar
+visu pārējo VO mehānismu ("pašreizējais" stāvoklis vienmēr atvasināts,
+nekad glabāts). Rediģējams TIKAI, kamēr `status === "proposed"` — tāpat kā
+pārējie VO lauki, kļūdu pēc apstiprināšanas labo ar jau esošo anulēšanas
+mehānismu (Sesija 23), nevis tiešu rediģēšanu.
+
+**Aprēķins** (`variationOrders/deriveCurrentState.ts`, jauna funkcija
+`computeReserveBalance(baseline, variationOrders)`): iet secīgi cauri
+APSTIPRINĀTAJĀM (un neanulētajām) VO — tas pats filtrs kā
+`deriveCurrentState` — katrai atkārtoti izmantojot jau esošo
+`computeVariationOrderDirectTotalImpact`:
+- Ietekme < 0 (izslēgšana/samazinājums) → summa AUTOMĀTISKI papildina
+  rezervi (`contribution`).
+- Ietekme > 0 (papildu darbi) → `vo.reserveDrawdown` (ja iestatīts)
+  SAMAZINA pieejamo atlikumu (`drawdown`) — VO ar ietaupījumu
+  `reserveDrawdown` lauks tiek IGNORĒTS, pat ja kļūdaini iestatīts (nav
+  jēgas "izmantot rezervi" VO, kas pati to papildina).
+
+Atgriež reģistru (`entries[]`, viena rinda katrai apstiprinātajai VO ar
+`directTotalImpact`/`contribution`/`drawdown`/kumulatīvo `balanceAfter`) +
+kopsavilkumu (`totalAccumulated`/`totalDrawn`/`available`). `variationOrders`
+jāpadod PILNS saraksts (ne tikai apstiprinātās) — tāpat kā
+`computeVariationOrderDirectTotalImpact`, katrai VO vajadzīgs tās secības
+konteksts pilnajā masīvā.
+
+**Apzināti NAV klampēts** (dizaina izvēle, konsekventi ar citiem
+neklampētiem laukiem šajā projektā, piem. `quantityDelta`/
+`executedQuantity`): `drawdown` var pārsniegt gan pieejamo atlikumu, gan
+pašas VO ietekmi — funkcija to neierobežo, UI parāda BRĪDINĀJUMU (nevis
+bloķē), tas pats "brīdinājums, ne bloķēšana" princips kā izpildes
+pārsniegumam (Sesija 19).
+
+**UI** (`VariationOrders.tsx`): katrai `proposed` VO ar POZITĪVU ietekmi
+parādās "Segt no Pasūtītāja rezerves (€)" ievades lauks ar redzamu
+"Pieejamais atlikums šobrīd" (= `computeReserveBalance` rezultāts NO
+VISĀM APSTIPRINĀTAJĀM VO — tas pats skaitlis, kas jārāda kā konteksts vēl
+"proposed" VO, jo tā vēl neietekmē šo aprēķinu); DIVI neatkarīgi
+brīdinājumi (pārsniedz atlikumu / pārsniedz pašas VO ietekmi), abi var
+rādīties vienlaicīgi. Apstiprinātai VO ar `reserveDrawdown > 0` rāda
+lasāmu "Segts no Pasūtītāja rezerves: X €" rindu. Zem VO karšu saraksta
+jauna "Pasūtītāja rezerve" sadaļa — kopsavilkuma rinda (Uzkrāts/Izmantots/
+Atlikums) + reģistra tabula (viena rinda katrai apstiprinātai VO).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma, projekts
+sagatavots tieši IndexedDB, ieskaitot lapas pārlādi persistences
+pārbaudei):** bāzes pozīcija (daudzums 10, vienības izmaksa 6€, tiešā
+summa 60€) — VO-1 izslēdz to pilnībā (apstiprināta) → rezerve
+"Uzkrāts: 60.00 € · Izmantots: 0.00 € · Atlikums: 60.00 €"; VO-2 pievieno
+jaunu pozīciju (4 gab × 5€ = 20€ ietekme, vēl "proposed") → parādās
+"Segt no Pasūtītāja rezerves" lauks ar "Pieejamais atlikums šobrīd: 60.00 €";
+iestatīts `reserveDrawdown = 20`, apstiprināts → rezerve
+"Uzkrāts: 60.00 € · Izmantots: 20.00 € · Atlikums: 40.00 €", reģistra
+tabulā abas rindas ar pareiziem skaitļiem. PĒC LAPAS PĀRLĀDES (pilns
+IndexedDB round-trip caur jauno v9 shēmu) rezerves skaitļi saglabājās
+identiski. Brīdinājumu UI pārbaudīts atsevišķi: VO ar ietekmi 4€ un
+iestatītu `reserveDrawdown = 100` (pieejamais atlikums 0€) parādīja ABUS
+brīdinājumus vienlaicīgi ar pareiziem skaitļiem. Konsolē nav kļūdu nevienā
+solī.
+
+**Apzināti ārpus šī uzdevuma apjoma:** Excel eksports NEMAINĀS — rezerves
+reģistrs/kopsavilkums pagaidām TIKAI web UI (feature tika apstiprināts kā
+"UI vispirms", skat. lēmumus augšā), varētu būt nākamais kandidāts, JĀPAJAUTĀ
+lietotājam, ne jāpieņem.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 138/138 testi zaļi (130 + 8 jauni: 6 `computeReserveBalance`
+  testi, 2 migrācijas testi v8->v9).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna uzkrāšanas/izmantošanas
+  plūsma, persistence pēc lapas pārlādes, brīdinājumu UI, konsolē nav
+  kļūdu.
+- ✅ Migrācija (v8 bez `reserveDrawdown` -> v9 ar noklusējumu 0; v8 ar jau
+  iestatītu vērtību -> saglabāta) testēta.
 
 ### Favicon
 

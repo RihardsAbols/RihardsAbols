@@ -1639,18 +1639,72 @@ konsolē NAV kļūdu ne importa, ne "Saglabāt" laikā.
   pareizi (izņemot `KO`/`KS` kopsavilkuma lapas, kas leģitīmi paliek
   izlaistas, jo tajās nav pozīciju datu).
 
+## Sesija 26: Pasūtītāja rezerve — ✅ pabeigts
+
+**Uzdevums:** lietotāja Sesijas 25 beigās ierosinātā ideja — VO ceļā
+izslēgto/samazināto pozīciju ietaupītā vērtība šobrīd vienkārši pazūd; vajag
+mehānismu, kas to uzkrāj atsevišķi ("Pasūtītāja rezerve"), lai vēlāk, kad
+rodas jauni papildu darbi, varētu redzēt/izmantot šo uzkrājumu segšanai.
+
+**Precizējoši jautājumi UZDOTI LIETOTĀJAM PIRMS ieviešanas** (`AskUserQuestion`,
+4 jautājumi, visi ieteicamie varianti apstiprināti) — lēmumi:
+- Avots: ABAS izmaiņas (pilna izslēgšana UN daudzuma samazinājums) papildina
+  rezervi.
+- Tāmes gala summu (Pavisam/KOPĀ AR PVN) rezerve NEIETEKMĒ — tikai
+  informatīvs pārskats blakus.
+- Izmantošana ir MANUĀLA/skaidra darbība (lietotājs katrai VO ar pozitīvu
+  ietekmi var atzīmēt konkrētu summu "segt no rezerves"), NEVIS automātiska.
+- UI integrēts esošajā "Izmaiņas (VO)" cilnē, nevis jauna cilne.
+
+**Implementēts:** skat. CLAUDE.md "Pasūtītāja rezerve (Sesija 26)" pilnu
+tehnisko aprakstu — `schemaVersion` `8 -> 9` (`VariationOrder.
+reserveDrawdown: number`, VIENĪGAIS jaunais tieši ievadāmais lauks, pati
+uzkrāšana paliek pilnībā atvasināta), jauna `computeReserveBalance`
+funkcija (`variationOrders/deriveCurrentState.ts`, atkārtoti izmanto
+`computeVariationOrderDirectTotalImpact`), UI (`VariationOrders.tsx`)
+katrai VO ar pozitīvu ietekmi rāda drawdown ievades lauku + divi neatkarīgi
+brīdinājumi (pārsniedz atlikumu/pārsniedz pašas VO ietekmi, apzināti nav
+klampēti, "brīdinājums, ne bloķēšana" princips), un jauns "Pasūtītāja
+rezerve" kopsavilkums/reģistrs zem VO karšu saraksta.
+
+**Testi:** `test/variationOrders.test.ts` — 6 jauni `computeReserveBalance`
+testi (uzkrāšana, drawdown lietošana, nav klampēts, ignorē drawdown uz
+savings VO, izlaiž proposed/rejected/voided VO, tukšs saraksts).
+`test/storage.test.ts` — 2 jauni migrācijas testi (v8->v9 defaulti/
+saglabāšana), 1 esošs papildināts (v5->current tests arī jauno lauku).
+Kopā **138/138 core testi zaļi** (130 + 8 jauni).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma, projekts
+sagatavots tieši IndexedDB, ieskaitot lapas pārlādi persistences
+pārbaudei):** bāzes pozīcija (60€) → VO-1 izslēdz pilnībā, apstiprināta →
+rezerve "Uzkrāts: 60.00 € · Atlikums: 60.00 €"; VO-2 pievieno jaunu
+pozīciju (20€ ietekme, vēl proposed) → "Segt no Pasūtītāja rezerves" lauks
+ar pareizu "Pieejamais atlikums šobrīd: 60.00 €"; iestatīts drawdown=20,
+apstiprināts → rezerve "Uzkrāts: 60.00 € · Izmantots: 20.00 € · Atlikums:
+40.00 €", reģistra tabula pareiza. PĒC LAPAS PĀRLĀDES skaitļi saglabājās
+identiski. Brīdinājumu UI pārbaudīts atsevišķi (VO ar 4€ ietekmi un
+drawdown=100 parādīja ABUS brīdinājumus pareizi). Konsolē nav kļūdu
+nevienā solī.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 138/138 testi zaļi (8 jauni šai funkcionalitātei).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna uzkrāšanas/izmantošanas
+  plūsma, persistence pēc lapas pārlādes, brīdinājumu UI, konsolē nav
+  kļūdu.
+- ✅ Migrācija (v8 bez `reserveDrawdown` -> v9 ar noklusējumu 0; v8 ar jau
+  iestatītu vērtību -> saglabāta) testēta.
+- ⚠️ Apzināti ārpus apjoma (lietotājs apstiprināja "UI vispirms"): Excel
+  eksports NEMAINĀS — rezerves reģistrs/kopsavilkums pagaidām tikai web UI.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Sesijas 25 abi soļi pabeigti.** C2-10 imports strādā pilnībā — šobrīd nav
-zināma neapstiprināta kandidāta importa jomā.
+**Sesijas 25 un 26 pabeigtas.** Šobrīd nav zināma neapstiprināta kandidāta.
 
-**Jauna, lielāka funkcionalitātes ideja no lietotāja (vēl nav apspriesta/
-projektēta):** "Pasūtītāja rezerve" — mehānisms, kas uzkrātu VO ceļā
-izslēgto/daļēji izslēgto darbu vērtību, ko vēlāk varētu izmantot jaunu
-papildu darbu segšanai. Vajadzīga sava projektēšanas diskusija (FIDIC
-"Provisional Sum" stila jēdziens, statusa plūsma, UI/Excel atspoguļojums)
-PIRMS ieviešanas — lietotājam pašam apstiprināts, ka tas apspriežams pēc
-C2-10 importa labojuma.
+**Apzināti ārpus Sesijas 26 apjoma (varētu būt nākamais kandidāts, JĀPAJAUTĀ
+lietotājam, ne jāpieņem):** Pasūtītāja rezerves reģistrs/kopsavilkums Excel
+eksportā (šobrīd tikai web UI).
 
 **Joprojām apzināti ārpus apjoma (no Sesijas 24):** Excel eksporta
 paplašināšana ar tām pašām atvasinātās numerācijas/VO-delta kolonnām, ko
@@ -1658,6 +1712,6 @@ Sesija 24 pievienoja TIKAI web UI; `VariationOrders.tsx` VO kartes izmaiņu
 tabulas atjaunināšana, lai arī tā rādītu atvasināto displayCode.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-25) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
+Sesijas 18-26) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
 konkrēts nākamais uzdevums - nav gatava kandidātu saraksta, ko piedāvāt
 bez papildu konteksta no lietotāja.

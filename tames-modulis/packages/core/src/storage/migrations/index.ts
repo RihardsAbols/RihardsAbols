@@ -81,6 +81,15 @@ const migrations: Record<number, Migration> = {
       ? data.variationOrders.map((vo) => migrateVariationOrderV7ToV8(vo as Record<string, unknown>))
       : data.variationOrders,
   }),
+  // v8 VO had no reserveDrawdown ("Pasūtītāja rezerve" - EUR summa, ko VO
+  // izmanto no izslēgtu/samazinātu pozīciju atvasinātā ietaupījuma) -
+  // default to 0 (neizmanto rezervi) so existing VOs keep working unchanged.
+  8: (data) => ({
+    ...data,
+    variationOrders: Array.isArray(data.variationOrders)
+      ? data.variationOrders.map((vo) => migrateVariationOrderV8ToV9(vo as Record<string, unknown>))
+      : data.variationOrders,
+  }),
 };
 
 function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string, unknown> {
@@ -107,6 +116,13 @@ function migrateVariationOrderV7ToV8(vo: Record<string, unknown>): Record<string
   return {
     ...vo,
     voidedReason: typeof vo.voidedReason === "string" ? vo.voidedReason : null,
+  };
+}
+
+function migrateVariationOrderV8ToV9(vo: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...vo,
+    reserveDrawdown: typeof vo.reserveDrawdown === "number" ? vo.reserveDrawdown : 0,
   };
 }
 
