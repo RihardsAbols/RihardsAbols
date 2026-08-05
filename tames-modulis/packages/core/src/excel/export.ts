@@ -10,6 +10,7 @@ import {
   computeItemCodesAndHistory,
   computeReserveBalance,
   computeVariationOrderDirectTotalImpact,
+  computeVariationOrderPrecedents,
   deriveCurrentSections,
   diffAgainstBaseline,
 } from "../variationOrders/deriveCurrentState.js";
@@ -476,8 +477,10 @@ const VO_STATUS_LABELS: Record<VariationOrder["status"], string> = {
 // register but "Sadaļa" in the diff table) - widths below are picked wide
 // enough for whichever table's content in that column is longer; a
 // too-narrow value clips text, a too-wide one is only extra whitespace, so
-// erring wide is the safe choice.
-const VARIATION_ORDERS_SHEET_COLUMN_WIDTHS = [20, 12, 40, 28, 36, 16, 22, 10, 20];
+// erring wide is the safe choice. Col. 8 is "Iepriekšējās VO" (register,
+// Sesija 30) vs. "Izslēgts" (diff table) - widened from the diff table's own
+// narrow need to fit the precedent VO list text.
+const VARIATION_ORDERS_SHEET_COLUMN_WIDTHS = [20, 12, 40, 28, 36, 16, 22, 34, 20];
 
 /**
  * Writes the "IZMAIŅAS" worksheet - a VO reģistrs (one row per Variation
@@ -519,6 +522,7 @@ function writeVariationOrdersSheet(
     "Pamatojums",
     "Instruēja",
     "Ietekme uz tiešajām izmaksām (EUR)",
+    "Iepriekšējās VO (izveides brīdī)",
   ];
   registerHeaders.forEach((label, i) => {
     const cell = sheet.getCell(registerHeaderRow, i + 1);
@@ -541,6 +545,10 @@ function writeVariationOrdersSheet(
     const impactCell = sheet.getCell(r, 7);
     impactCell.value = computeVariationOrderDirectTotalImpact(baselineSections, state.variationOrders, vo.id);
     impactCell.numFmt = MONEY_FORMAT;
+    const precedents = computeVariationOrderPrecedents(state.variationOrders, vo.id);
+    const precedentsCell = sheet.getCell(r, 8);
+    precedentsCell.value = precedents.map((p) => `${p.voNumber} (${VO_STATUS_LABELS[p.statusAtReference]})`).join(", ");
+    precedentsCell.alignment = { wrapText: true, vertical: "top" };
   });
   row = firstVoRow + state.variationOrders.length + 1; // + viena tukša atdalītājrinda
 

@@ -5,6 +5,7 @@ import {
   computeItemCodesAndHistory,
   computeReserveBalance,
   computeVariationOrderDirectTotalImpact,
+  computeVariationOrderPrecedents,
   createVariationOrder,
   deriveCurrentSections,
   deriveCurrentState,
@@ -289,6 +290,90 @@ describe("computeVariationOrderDirectTotalImpact", () => {
   it("returns 0 for an unknown VO id", () => {
     const baseline = [section([item()])];
     expect(computeVariationOrderDirectTotalImpact(baseline, [], "missing")).toBe(0);
+  });
+});
+
+describe("computeVariationOrderPrecedents", () => {
+  it("returns an empty list for the first VO (no prior VOs)", () => {
+    const first = vo({ id: "vo-1", number: "VO-1" });
+    expect(computeVariationOrderPrecedents([first], "vo-1")).toEqual([]);
+  });
+
+  it("returns an empty list for an unknown VO id", () => {
+    expect(computeVariationOrderPrecedents([vo({ id: "vo-1" })], "missing")).toEqual([]);
+  });
+
+  it("lists all prior VOs by array position, each with its status at the target VO's creation moment", () => {
+    const first = vo({
+      id: "vo-1",
+      number: "VO-1",
+      status: "approved",
+      statusHistory: [
+        { status: "proposed", date: "2026-01-01T00:00:00.000Z" },
+        { status: "approved", date: "2026-01-02T00:00:00.000Z" },
+      ],
+    });
+    const second = vo({
+      id: "vo-2",
+      number: "VO-2",
+      status: "rejected",
+      statusHistory: [
+        { status: "proposed", date: "2026-01-03T00:00:00.000Z" },
+        { status: "rejected", date: "2026-01-04T00:00:00.000Z" },
+      ],
+    });
+    const third = vo({
+      id: "vo-3",
+      number: "VO-3",
+      status: "proposed",
+      statusHistory: [{ status: "proposed", date: "2026-01-05T00:00:00.000Z" }],
+    });
+
+    expect(computeVariationOrderPrecedents([first, second, third], "vo-3")).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", statusAtReference: "approved" },
+      { voId: "vo-2", voNumber: "VO-2", statusAtReference: "rejected" },
+    ]);
+  });
+
+  it("shows a precedent's status AS OF the target VO's creation, even if that precedent VO changed status later", () => {
+    // first VO: approved when "second" was created, but VOIDED afterwards - the precedent
+    // for "second" must still show "approved" (that was true when "second" was created).
+    const first = vo({
+      id: "vo-1",
+      number: "VO-1",
+      status: "voided",
+      statusHistory: [
+        { status: "proposed", date: "2026-01-01T00:00:00.000Z" },
+        { status: "approved", date: "2026-01-02T00:00:00.000Z" },
+        { status: "voided", date: "2026-01-10T00:00:00.000Z" }, // AFTER "second" was created
+      ],
+    });
+    const second = vo({
+      id: "vo-2",
+      number: "VO-2",
+      statusHistory: [{ status: "proposed", date: "2026-01-05T00:00:00.000Z" }],
+    });
+
+    expect(computeVariationOrderPrecedents([first, second], "vo-2")).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", statusAtReference: "approved" },
+    ]);
+  });
+
+  it("shows a precedent as still 'proposed' if it hadn't been decided yet when the target VO was created", () => {
+    const first = vo({
+      id: "vo-1",
+      number: "VO-1",
+      statusHistory: [{ status: "proposed", date: "2026-01-01T00:00:00.000Z" }],
+    });
+    const second = vo({
+      id: "vo-2",
+      number: "VO-2",
+      statusHistory: [{ status: "proposed", date: "2026-01-02T00:00:00.000Z" }],
+    });
+
+    expect(computeVariationOrderPrecedents([first, second], "vo-2")).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", statusAtReference: "proposed" },
+    ]);
   });
 });
 

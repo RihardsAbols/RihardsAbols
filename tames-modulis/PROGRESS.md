@@ -1904,48 +1904,77 @@ lapas pārlādes. Konsolē nav kļūdu.
 - ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
 - ✅ Manuāli pārbaudīts ar Playwright, pilna plūsma, konsolē nav kļūdu.
 
-## 🔜 IESPĒJAMAIS NĀKAMAIS SOLIS — Sesija 30: VO precedentu redzamība (APSTIPRINĀTS uzdevums, VĒL NAV IEVIESTS)
+## Sesija 30: VO precedentu redzamība — ✅ pabeigts
 
 **Sesijas 28 un 29 pabeigtas** (audita žurnāls, bāzes apstiprinātājs).
 Lietotājs izvēlējās Sesijas 28 ceļveža **2. kandidātu** kā nākamo (`sākam
 ar 2. punktu`) — **VO precedentu redzamība**: katrai VO eksplicīti (ne
 tikai netieši atvasināti aprēķinos, skat. CLAUDE.md "Tāmes izmaiņu
 (Variation Order) vadība" `computeVariationOrderDirectTotalImpact`) rādīt,
-kuras PRIEKŠĒJĀS apstiprinātās VO bija spēkā šīs VO izveides/apstiprināšanas
-brīdī — piem. teksts "Izveidota, kad spēkā: VO-1, VO-2" katrai VO
-kartei (`VariationOrders.tsx`) un Excel "IZMAIŅAS" reģistra rindai
-(`excel/export.ts` `writeVariationOrdersSheet`).
+kuras PRIEKŠĒJĀS VO bija spēkā šīs VO izveides brīdī.
 
-**ŠIS UZDEVUMS VĒL NAV SĀKTS** — sarunas čats tika apzināti pārtraukts
-šeit (pirms izpētes/ieviešanas), jo bija kļuvis liels (divas pilnas
-sesijas ar plašu faila lasīšanu/Playwright pārbaudi jau notikušas tajā
-pašā sarunā). Nākamajai sesijai jāsāk ar SAVU `AskUserQuestion` par
-precīzu semantiku PIRMS ieviešanas — konsekventi ar VISU iepriekšējo šī
-projekta praksi. Iespējamie atklātie jautājumi, kas jāapsver (vēl nav
-pajautāti/apstiprināti):
-- Vai "precedents" nozīmē tikai VO ID/numuru sarakstu, ko rādīt kā
-  vienkāršu tekstu, vai arī jāglabā kā strukturēts lauks datu modelī
-  (`VariationOrder` momentuzņēmums, analoģiski Sesijas 29 pieejai)?
-- Vai šī informācija jau ir PILNĪGI atvasināma no esošā masīva secības +
-  `status` filtra (kā `computeVariationOrderDirectTotalImpact` jau dara),
-  tātad NAV vajadzīgs jauns glabātais lauks/migrācija - tikai jauna UI/
-  Excel rādīšana virs jau esošā atvasinājuma? (Šķiet visticamākais, bet
-  JĀPĀRBAUDA un JĀAPSTIPRINA ar lietotāju, nevis jāpieņem.) Ievērot: VO
-  var tikt ANULĒTA (Sesija 23) PĒC citas VO izveides - vai "precedents"
-  jārāda pret VO SARAKSTA STĀVOKLI ŠĪS VO IZVEIDES BRĪDĪ (kas VARĒJA vēlāk
-  mainīties, ja kāda no tām VO tika anulēta), vai vienmēr pret PAŠREIZĒJO
-  apstiprināto sarakstu? Tas ir analogs jautājums tam, ko izpildes akta
-  momentuzņēmuma kandidāts (joprojām neieviests, skat. zemāk) risinātu -
-  ja atbilde ir "jārāda vēsturiski precīzi pat pēc vēlākas anulēšanas",
-  tad TOMĒR var būt vajadzīgs glabāts momentuzņēmuma lauks.
-- Vai rādīt TIKAI apstiprinātās (`status === "approved"`) VO, kas bija
-  spēkā, vai arī jau NORAIDĪTĀS/ANULĒTĀS (audita pilnībai)?
+**Sesija sākta ar `AskUserQuestion` (2 jautājumi) PIRMS ieviešanas**,
+konsekventi ar visu iepriekšējo šī projekta praksi, adresējot PROGRESS.md
+iepriekš dokumentētos atklātos jautājumus:
 
-**Atlikušais 1 kandidāts pēc šīs sesijas:**
+1. **"Kas ir VO 'precedents' — kuru VO sarakstu rādīt?"** (konteksts
+   jautājumā: `VariationOrder.statusHistory`, Sesija 28, jau glabā katru
+   statusa maiņu ar datumu, tāpēc arī "vēsturiskā" versija ir pilnībā
+   atvasināma, jauns glabāts lauks NAV vajadzīgs nevienā variantā) —
+   trīs varianti: (a) pašreizējais apstiprinātais saraksts (vienkāršākais,
+   konsekvents ar `computeVariationOrderDirectTotalImpact`), (b)
+   vēsturiski pēc IZVEIDES datuma, (c) vēsturiski pēc APSTIPRINĀŠANAS
+   datuma. **Lietotājs izvēlējās (b): vēsturiski pēc izveides datuma.**
+2. **"Vai iekļaut arī noraidītās/anulētās VO precedentu sarakstā?"**
+   **Lietotājs izvēlējās: jā, iekļaut arī (audita pilnībai)** — precedentu
+   saraksts rāda VISAS iepriekšējās VO (ne tikai apstiprinātās), katru ar
+   SAVU statusu tajā brīdī.
+
+**Papildu tehniska precizēšana izpētes gaitā (nebija atsevišķi
+uzdota, bet materiāli ietekmē pareizību):** `VariationOrder` satur DIVUS
+atšķirīgus "izveides datuma" jēdzienus — `vo.date` (brīvi rediģējams
+biznesa/instrukcijas datums, NEGARANTĒ monotonu secību ar masīvu) un
+`vo.statusHistory[0].date` (sistēmas izveides-laikspiedols, VIENMĒR sakrīt
+ar VO pievienošanas secību masīvā, jo jaunas VO vienmēr tiek pievienotas
+masīva BEIGĀS). Implementācijā izmantots PĒDĒJAIS (`statusHistory[0].date`)
+— tas ir tehniski pareizais atskaites punkts "vēsturiski precīzai"
+rekonstrukcijai, un konsekvents ar to, kāpēc `statusHistory` vispār tika
+ieviests Sesijā 28. Dokumentēts CLAUDE.md.
+
+**Ieviešana, testēšana, dokumentācija:** skat. CLAUDE.md "VO precedentu
+redzamība (Sesija 30)" pilnu tehnisko aprakstu — core
+`computeVariationOrderPrecedents`, UI (`VariationOrders.tsx`), Excel
+eksports (`excel/export.ts` jauna reģistra kolonna). Apstiprinājās
+izpētes pieņēmums: **pilnībā atvasināms no jau esošā `variationOrders`
+masīva + `statusHistory`, NAV vajadzīgs jauns `schemaVersion`/migrācija.**
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, projekts sagatavots
+tieši IndexedDB):** 4 VO ķēde, kas apzināti konstruēta, lai pārbaudītu
+tieši "vēsturiski precīzi, arī pēc vēlākas statusa maiņas" uzvedību —
+VO-4 (izveidota, kamēr VO-3 bija "apstiprināta") precedentu sarakstā
+pareizi rāda "VO-3 (Apstiprināts)", LAI GAN VO-3 PATI vēlāk (pēc VO-4
+izveides) tika anulēta un tās PAŠAS kartes žetons šobrīd rāda "Anulēts".
+Eksportētā `.xlsx` faila "IZMAIŅAS" lapas jaunā kolonna satur identisku
+tekstu UI kartēm. Konsolē nav kļūdu (skat. CLAUDE.md pilnu aprakstu).
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 166/166 testi zaļi (160 + 6 jauni).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs, bundle izmēri
+  praktiski nemainīgi.
+- ✅ Manuāli pārbaudīts ar Playwright — 4 VO ķēde, kas apzināti pārbauda
+  vēsturiski precīzo uzvedību, gan UI kartēs, gan Excel eksportā, konsolē
+  nav kļūdu.
+
+**Atlikušais 1 kandidāts (Sesijas 28 ceļvedis):**
 - **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
   izveides brīdī (`approvedVariationOrderIdsAtCreation` vai līdzvērtīgs),
-  lai varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu.
-
-**Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-29) un CLAUDE.md pilnībā, TAD uzdot `AskUserQuestion` par
-augstāk minētajiem atklātajiem jautājumiem PIRMS jebkādas ieviešanas.
+  lai varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu. Nākamajai
+  sesijai jāsāk ar SAVU `AskUserQuestion` par precīzu semantiku PIRMS
+  ieviešanas — konsekventi ar visu iepriekšējo šī projekta praksi. Tagad,
+  kad Sesijā 30 apstiprinājās, ka `statusHistory` pietiek "vēsturiski
+  precīzai" VO-precedentu rekonstrukcijai bez jauna glabātā lauka, tas
+  pats jautājums jāapsver arī šeit: vai izpildes akta atlikuma vēsturiskā
+  rekonstrukcija ir līdzīgi pilnībā atvasināma no `VariationOrder.
+  statusHistory` (katras VO statusa laika taisnē) + akta PAŠA datuma, vai
+  tomēr vajadzīgs glabāts momentuzņēmuma lauks (piem. ja izpildes aktiem
+  nav ekvivalenta statusa-vēstures mehānisma).

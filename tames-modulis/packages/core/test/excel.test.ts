@@ -747,6 +747,39 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
     expect(sheet.getCell(19, 1).value).toBeNull();
   });
 
+  it("register's 'Iepriekšējās VO' column lists prior VOs with their status as of the current VO's creation, incl. rejected/voided", () => {
+    const state = sampleState();
+    state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+
+    const first = createVariationOrder([], { title: "Pirmā", justification: "", instructedBy: "", date: "2026-01-01" });
+    first.status = "approved";
+    first.statusHistory = [
+      { status: "proposed", date: "2026-01-01T00:00:00.000Z" },
+      { status: "approved", date: "2026-01-02T00:00:00.000Z" },
+    ];
+    const second = createVariationOrder([first], { title: "Otrā", justification: "", instructedBy: "", date: "2026-01-03" });
+    second.status = "rejected";
+    second.statusHistory = [
+      { status: "proposed", date: "2026-01-03T00:00:00.000Z" },
+      { status: "rejected", date: "2026-01-04T00:00:00.000Z" },
+    ];
+    const third = createVariationOrder([first, second], { title: "Trešā", justification: "", instructedBy: "", date: "2026-01-05" });
+    third.status = "approved";
+    third.statusHistory = [
+      { status: "proposed", date: "2026-01-05T00:00:00.000Z" },
+      { status: "approved", date: "2026-01-06T00:00:00.000Z" },
+    ];
+    state.variationOrders = [first, second, third];
+
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("IZMAIŅAS")!;
+
+    expect(sheet.getCell(11, 8).value).toBe("Iepriekšējās VO (izveides brīdī)");
+    expect(sheet.getCell(12, 8).value).toBe(""); // VO-1: nav priekšgājēju
+    expect(sheet.getCell(13, 8).value).toBe("VO-1 (Apstiprināts)");
+    expect(sheet.getCell(14, 8).value).toBe("VO-1 (Apstiprināts), VO-2 (Noraidīts)");
+  });
+
   it("renders a brand-new section (added by a VO) as its own sheet, with every item marked JAUNS, without misaligning existing sections", () => {
     const state = sampleState();
     state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";

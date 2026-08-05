@@ -452,6 +452,12 @@ body {
   margin-top: 0.25rem;
 }
 
+.vo-precedents-text {
+  font-size: 0.85rem;
+  color: #777;
+  margin: 0.25rem 0 0;
+}
+
 .vo-justification-text {
   font-size: 0.9rem;
   margin: 0.5rem 0;
