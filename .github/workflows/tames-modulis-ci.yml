@@ -1,0 +1,40 @@
+name: Tāmju modulis CI
+
+on:
+  pull_request:
+    paths:
+      - "tames-modulis/**"
+      - ".github/workflows/tames-modulis-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "tames-modulis/**"
+      - ".github/workflows/tames-modulis-ci.yml"
+
+defaults:
+  run:
+    working-directory: tames-modulis
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tames-modulis/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck (packages/core, packages/web)
+        run: npm run typecheck
+
+      - name: Core testi (vitest)
+        run: npm test
+
+      - name: Web build (typecheck + vite build)
+        run: npm run build:web

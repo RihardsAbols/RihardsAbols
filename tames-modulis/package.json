@@ -6,6 +6,7 @@
   ],
   "scripts": {
     "test": "npm test --workspace @tames-modulis/core",
+    "typecheck": "npm run typecheck --workspace @tames-modulis/core && npm run typecheck --workspace @tames-modulis/web",
     "dev:web": "npm run dev --workspace @tames-modulis/web",
     "build:web": "npm run build --workspace @tames-modulis/web"
   }
