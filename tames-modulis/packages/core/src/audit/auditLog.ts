@@ -22,7 +22,7 @@ export interface AuditEvent {
   refId: string;
   /** Cilvēklasāma atsauce, piem. "VO-3" vai "Akts: 2026-02". */
   refLabel: string;
-  /** Kurš instruēja/apstiprināja - null, ja avota laukam nav vērtības (piem. bāzes iesaldēšanai nav atsevišķa apstiprinātāja lauka, skat. "Nākamās sesijas" CLAUDE.md). */
+  /** Kurš instruēja/apstiprināja - null, ja avota laukam nav vērtības (piem. bāzes iesaldēšanai, kas notikusi PIRMS baselineApprovedBy pievienošanas Sesijā 29, skat. models/boq.ts). */
   actor: string | null;
   /** Pamatojums/iemesls/periods, kur pieejams - citādi null. */
   detail: string | null;
@@ -60,7 +60,9 @@ export function computeAuditLog(state: BoqState): AuditEvent[] {
       date: state.baselineApprovedAt,
       refId: "baseline",
       refLabel: "Bāzes tāme",
-      actor: null,
+      // null for baselines frozen BEFORE baselineApprovedBy existed
+      // (Sesija 29) - migrācija to nevar atgūt, skat. models/boq.ts.
+      actor: state.baselineApprovedBy,
       detail: null,
     });
   }

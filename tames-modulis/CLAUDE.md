@@ -14,9 +14,10 @@ Npm workspace ar divām pakotnēm:
   nosaukums/reģ.nr./adrese) un `preparedBy`/`checkedBy` ir projekta līmenī;
   `BoqSection.estimateNumber` ir manuāli ievadāma tāmes numerācija sadaļas
   līmenī — skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
-  `BoqState.baselineApprovedAt`/`variationOrders`/`executionRecords` un
-  `BoqItem.excluded` — tāmes izmaiņu (Variation Order) vadība un izpildes
-  aktu uzskaite, skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  `BoqState.baselineApprovedAt`/`baselineApprovedBy`/`variationOrders`/
+  `executionRecords` un `BoqItem.excluded` — tāmes izmaiņu (Variation
+  Order) vadība un izpildes aktu uzskaite, skat. "Tāmes izmaiņu (Variation
+  Order) vadība" zemāk un "Bāzes apstiprinātājs (Sesija 29)".
 - `src/models/variationOrder.ts` — `VariationOrder`/`VariationOrderChange`
   tipi, ieskaitot `VariationOrderChange.newSection` (VO var izveidot
   pavisam jaunu sadaļu, ne tikai pozīciju esošā),
@@ -65,7 +66,7 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8 -> v9 -> v10`, `migrateToCurrent`
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8 -> v9 -> v10 -> v11`, `migrateToCurrent`
   atbalsta pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
@@ -723,7 +724,10 @@ lietotājs nospiež "Apstiprināt bāzes tāmi" (`ProjectEditor.tsx`), datums
 tiek iestatīts un **`sections` no tā brīža ir bāze — pastāvīga, nekad vairs
 tieši nerediģēta atsauce**. Nav atsevišķa "baseline snapshot" lauka —
 `sections` PATS IR bāze pēc iesaldēšanas, tāpēc nav divu paralēlu kopiju,
-kas varētu izklīst.
+kas varētu izklīst. (Kopš Sesijas 29 klikšķis uz "Apstiprināt bāzes tāmi"
+atver inline formu ar OBLIGĀTU apstiprinātāja lauku, kas iestata arī
+`BoqState.baselineApprovedBy` — skat. "Bāzes apstiprinātājs (Sesija 29)"
+zemāk.)
 
 **"Pašreizējais" stāvoklis vienmēr ATVASINĀTS, nekad glabāts.**
 `deriveCurrentSections(baseline, variationOrders)`
@@ -1763,9 +1767,77 @@ kļūdu nevienā solī.
 
 **Nākamās sesijas (lietotāja apstiprināts ceļvedis, katra ar savu
 `AskUserQuestion` apstiprinājumu PIRMS ieviešanas):**
-- Bāzes apstiprinātājs — `baselineApprovedBy` lauks, redzams banierī un
-  Excel galvenes blokā, kā `actor` audita žurnāla `baseline_approved`
-  notikumam.
+- ~~Bāzes apstiprinātājs~~ — **ieviests Sesijā 29**, skat. zemāk.
+- Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
+  brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
+  pašreizējo) atlikumu.
+- VO precedentu redzamība — eksplicīts teksts "Izveidota, kad spēkā: VO-1,
+  VO-2" katrai VO kartei/Excel reģistra rindai.
+
+### Bāzes apstiprinātājs (Sesija 29)
+
+Pirmais no trim Sesijas 28 "Nākamās sesijas" kandidātiem (skat. augšā).
+Lietotājs apstiprināja (`AskUserQuestion`, 2 jautājumi PIRMS ieviešanas):
+lauks **OBLIGĀTS** (bāzi nevar iesaldēt, kamēr apstiprinātāja vārds nav
+ievadīts) un **inline forma pēc klikšķa** (TAS PATS paraugs, ko jau lieto
+VO/akta anulēšana — "vo-void-form"/"execution-void-form" — nevis
+persistents lauks pirms klikšķa, kā VO izveides "Instruēja").
+
+**Datu modelis (`schemaVersion` `10 -> 11`):** `BoqState.baselineApprovedBy:
+string | null` — `null` TIKAI projektiem, kas iesaldēti PIRMS šī lauka
+pievienošanas (migrācija to nevar atgūt). Jaunām iesaldēšanām UI to
+nepieļauj (skat. zemāk).
+
+**UI** (`ProjectEditor.tsx`): klikšķis uz "Apstiprināt bāzes tāmi" vairs
+NEIZSAUC `confirm()` dialogu ar tiešu iesaldēšanu — tā vietā atver
+`.baseline-approve-form` (dzeltens fons, tāpat kā `.baseline-banner`,
+NEVIS `.vo-void-form` sarkanais fons, jo šī nav destruktīva/anulēšanas
+darbība) ar obligātu "Apstiprinātājs" lauku + "Apstiprināt bāzes tāmi"
+pogu (atspējota, kamēr lauks tukšs, tāpat kā VO/akta anulēšanas
+"Apstiprināt anulēšanu" pogas) + "Atcelt". Sadaļas/pozīcijas paliek
+rediģējamas, kamēr forma atvērta, bet vēl nav apstiprināta (`baselineLocked`
+paliek `false`, kamēr `baselineApprovedAt` nav iestatīts). Bāzes iesaldēšanas
+baneris tagad rāda arī "Apstiprināja: {vārds}" (vai "-" migrētiem vecajiem
+projektiem bez šī lauka).
+
+**Audita žurnāls** (`src/audit/auditLog.ts`, Sesija 28): `baseline_approved`
+notikuma `actor` tagad ir `state.baselineApprovedBy` (iepriekš vienmēr
+`null`).
+
+**Excel eksports** (`excel/export.ts`): divas jaunas rindas TIKAI
+KOPSAVILKUMS lapā (nevis `writeProjectHeaderBlock`, ko izsauc katra lapa —
+apzināta izvēle, lai nešķeltu esošo rindu izkārtojumu visās sadaļu/IZMAIŅAS/
+IZPILDES AKTI/VĒSTURE lapās; simetriski ar to, kā pārējie "pieņēmumu" lauki
+— Atlaides/Virsizdevumu/Peļņas/PVN likme — arī ir TIKAI KOPSAVILKUMS, nevis
+katrā lapā), "Bāzes tāme apstiprināta:"/"Apstiprināja:" TŪLĪT AIZ PVN
+likmes rindas, TIKAI kad `baselineApprovedAt !== null` — pārējās lapas
+(sadaļu, IZMAIŅAS, IZPILDES AKTI, VĒSTURE) NAV skartas. Raw ISO datums
+(nevis `toLocaleDateString`), konsekventi ar to, kā šis fails jau raksta
+citus datumus VO/akta/audita ierakstos.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma, ieskaitot
+lapas pārlādi):** klikšķis uz "Apstiprināt bāzes tāmi" atvēra formu, BET
+pozīcijas palika rediģējamas un bāze NETIKA iesaldēta; "Apstiprināt bāzes
+tāmi" poga formā bija atspējota, kamēr lauks tukšs, un kļuva aktīva pēc
+ievades; pēc apstiprināšanas baneris rādīja "Apstiprināja: Jānis Bērziņš";
+"Vēsture" cilnē `baseline_approved` rinda rādīja to pašu vārdu Persona
+kolonnā. Pēc lapas pārlādes baneris saglabājās identisks. Eksportētā
+`.xlsx` faila KOPSAVILKUMS lapā (pārbaudīta ar `exceljs`) rindas 13-14
+saturēja precīzi "Bāzes tāme apstiprināta:"/ISO datumu un "Apstiprināja:"/
+"Jānis Bērziņš". Konsolē nav kļūdu nevienā solī.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 160/160 testi zaļi (154 + 6 jauni: 2 `computeAuditLog` actor
+  testi, 2 Excel KOPSAVILKUMS testi, 2 migrācijas v10->v11 testi).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna plūsma (forma neieslaidz
+  bāzi pirms apstiprināšanas, obligātā lauka validācija, baneris/Vēsture
+  cilne/Excel rāda apstiprinātāju, persistence pēc lapas pārlādes),
+  konsolē nav kļūdu.
+
+**Nākamās sesijas (atlikušie divi Sesijas 28 kandidāti, katra ar savu
+`AskUserQuestion` apstiprinājumu PIRMS ieviešanas):**
 - Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
   brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
   pašreizējo) atlikumu.

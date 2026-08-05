@@ -645,6 +645,53 @@ describe("migrateToCurrent", () => {
     expect(migrated.variationOrders[0].statusHistory).toEqual(existingHistory);
   });
 
+  it("defaults baselineApprovedBy to null when migrating v10 data (bāze iesaldēta pirms šī lauka pievienošanas)", () => {
+    const v10 = {
+      schemaVersion: 10,
+      projectId: "proj-22",
+      projectName: "v10 bez baselineApprovedBy",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v10);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.baselineApprovedBy).toBeNull();
+  });
+
+  it("preserves an already-present baselineApprovedBy during v10->v11 migration", () => {
+    const v10 = {
+      schemaVersion: 10,
+      projectId: "proj-23",
+      projectName: "v10 ar jau iestatītu baselineApprovedBy",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      baselineApprovedBy: "Jānis Bērziņš",
+      variationOrders: [],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v10);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.baselineApprovedBy).toBe("Jānis Bērziņš");
+  });
+
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {
     const v1 = { schemaVersion: 1, projectId: "proj-6", projectName: "v1 ar PVN", vatRate: 0.12, sections: [] };
     const migrated = migrateToCurrent(v1);

@@ -104,6 +104,14 @@ const migrations: Record<number, Migration> = {
       ? data.variationOrders.map((vo) => migrateVariationOrderV9ToV10(vo as Record<string, unknown>))
       : data.variationOrders,
   }),
+  // v10 had no baselineApprovedBy (kas apstiprināja bāzes iesaldēšanu) -
+  // default to null. Vēsturiskiem projektiem šī informācija nekad netika
+  // ievadīta, tāpēc to nevar atgūt - `null` audita žurnālā/UI/Excel rāda
+  // kā "-", skat. CLAUDE.md "Bāzes apstiprinātājs (Sesija 29)".
+  10: (data) => ({
+    ...data,
+    baselineApprovedBy: typeof data.baselineApprovedBy === "string" ? data.baselineApprovedBy : null,
+  }),
 };
 
 function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string, unknown> {

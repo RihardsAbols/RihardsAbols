@@ -241,6 +241,44 @@ describe("exportBoqToWorkbook project header / signature block", () => {
     expect(summary.getCell(14, 1).value).toBe("Sadaļa");
   });
 
+  it("omits the baseline approval rows on KOPSAVILKUMS for a project with no baseline yet", () => {
+    const state = sampleState();
+    const workbook = exportBoqToWorkbook(state);
+    const summary = workbook.getWorksheet("KOPSAVILKUMS")!;
+
+    const rowTexts: unknown[] = [];
+    for (let r = 9; r <= 14; r++) rowTexts.push(summary.getCell(r, 1).value);
+    expect(rowTexts).not.toContain("Bāzes tāme apstiprināta:");
+    expect(rowTexts).not.toContain("Apstiprināja:");
+  });
+
+  it("writes Bāzes tāme apstiprināta/Apstiprināja rows on KOPSAVILKUMS after the rates block for a baselined project", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    state.baselineApprovedBy = "Jānis Bērziņš";
+    const workbook = exportBoqToWorkbook(state);
+    const summary = workbook.getWorksheet("KOPSAVILKUMS")!;
+
+    // rates block rows 9-12 (same as the no-baseline case), then the two
+    // baseline rows 13-14, blank separator row 15, table header row 16 -
+    // shifted down by 2 rows from the no-baseline layout.
+    expect(summary.getCell(12, 1).value).toBe("PVN likme:");
+    expect(summary.getCell(13, 1).value).toBe("Bāzes tāme apstiprināta:");
+    expect(summary.getCell(13, 2).value).toBe("2026-01-01T00:00:00.000Z");
+    expect(summary.getCell(14, 1).value).toBe("Apstiprināja:");
+    expect(summary.getCell(14, 2).value).toBe("Jānis Bērziņš");
+    expect(summary.getCell(16, 1).value).toBe("Sadaļa");
+  });
+
+  it("writes '-' for Apstiprināja on KOPSAVILKUMS when baselineApprovedBy is null (bāze iesaldēta pirms šī lauka pievienošanas)", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    state.baselineApprovedBy = null;
+    const workbook = exportBoqToWorkbook(state);
+    const summary = workbook.getWorksheet("KOPSAVILKUMS")!;
+
+    expect(summary.getCell(14, 1).value).toBe("Apstiprināja:");
+    expect(summary.getCell(14, 2).value).toBe("-");
+  });
+
   it("applies readable column widths on section sheets instead of the ~8.43 default", () => {
     const state = sampleState();
     const workbook = exportBoqToWorkbook(state);

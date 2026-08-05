@@ -1870,23 +1870,54 @@ v10 shēmu). Eksportētā `.xlsx` faila "VĒSTURE" lapa (pārbaudīta ar
 - ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
 - ✅ Manuāli pārbaudīts ar Playwright, pilna plūsma, konsolē nav kļūdu.
 
+## Sesija 29 — Bāzes apstiprinātājs
+
+Pirmais no trim Sesijas 28 "Nākamās sesijas" kandidātiem. Lietotājs izvēlējās
+sākt ar šo (`sākam ar 1. punktu`). Pirms ieviešanas `AskUserQuestion` (2
+jautājumi): (1) vai `baselineApprovedBy` ir OBLIGĀTS vai OPCIONĀLS — lietotājs
+izvēlējās **obligāts** (bāzi nevar iesaldēt bez apstiprinātāja vārda); (2)
+kāda UI plūsma — lietotājs izvēlējās **inline forma pēc klikšķa** (tas pats
+paraugs, ko jau lieto VO/akta anulēšana), nevis persistents lauks pirms
+klikšķa.
+
+**Ieviests** (pilns tehniskais apraksts CLAUDE.md "Bāzes apstiprinātājs
+(Sesija 29)"): `BoqState.baselineApprovedBy: string | null`
+(`schemaVersion` `10 -> 11`, migrācija defaultē `null` vēsturiskiem
+projektiem). `ProjectEditor.tsx` "Apstiprināt bāzes tāmi" poga vairs
+neizsauc `confirm()` — atver `.baseline-approve-form` ar obligātu
+apstiprinātāja lauku, apstiprināšanas poga atspējota, kamēr lauks tukšs.
+Baneris rāda "Apstiprināja: {vārds}". Audita žurnāla `baseline_approved`
+notikuma `actor` tagad ir šis lauks (iepriekš vienmēr `null`). Excel
+KOPSAVILKUMS lapā divas jaunas rindas AIZ PVN likmes ("Bāzes tāme
+apstiprināta:"/"Apstiprināja:") — apzināti TIKAI KOPSAVILKUMS, nevis
+katrā lapā (simetriski ar pārējiem "pieņēmumu" laukiem).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma, ieskaitot
+lapas pārlādi):** forma atvērās bez tūlītējas iesaldēšanas (pozīcijas
+palika rediģējamas); "Apstiprināt bāzes tāmi" poga formā bija atspējota
+tukšam laukam; pēc apstiprināšanas baneris/"Vēsture" cilne/Excel
+KOPSAVILKUMS visi rādīja to pašu apstiprinātāja vārdu; persistence pēc
+lapas pārlādes. Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 160/160 testi zaļi (154 + 6 jauni).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
+- ✅ Manuāli pārbaudīts ar Playwright, pilna plūsma, konsolē nav kļūdu.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Sesija 28 pabeigta** (audita žurnāls). Lietotāja apstiprināts ceļvedis
-turpmākajām sesijām (katra ar savu `AskUserQuestion` apstiprinājumu PIRMS
-ieviešanas, konsekventi ar visu iepriekšējo prakses šajā projektā):
+**Sesijas 28 un 29 pabeigtas** (audita žurnāls, bāzes apstiprinātājs).
+Atlikuši divi Sesijas 28 lietotāja apstiprinātie ceļveža kandidāti (katra
+ar savu `AskUserQuestion` apstiprinājumu PIRMS ieviešanas):
 
-1. **Bāzes apstiprinātājs** — `baselineApprovedBy` lauks (`BoqState`),
-   redzams banierī un Excel galvenes blokā, kā `actor` audita žurnāla
-   `baseline_approved` notikumam.
-2. **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
+1. **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
    izveides brīdī (`approvedVariationOrderIdsAtCreation` vai līdzvērtīgs),
    lai varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu.
-3. **VO precedentu redzamība** — eksplicīts teksts "Izveidota, kad spēkā:
+2. **VO precedentu redzamība** — eksplicīts teksts "Izveidota, kad spēkā:
    VO-1, VO-2" katrai VO kartei/Excel reģistra rindai.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-28) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, kuru no
-augstāk minētajiem 3 kandidātiem viņš vēlas nākamo (vai kādu citu
+Sesijas 18-29) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, kuru no
+augstāk minētajiem 2 kandidātiem viņš vēlas nākamo (vai kādu citu
 konkrētu uzdevumu) - nav pieņemts, ka #1 automātiski ir nākamais tikai
 tāpēc, ka tas uzskaitīts pirmais.

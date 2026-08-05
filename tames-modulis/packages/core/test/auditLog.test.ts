@@ -52,11 +52,19 @@ describe("computeAuditLog", () => {
     expect(computeAuditLog(baseState())).toEqual([]);
   });
 
-  it("emits a single baseline_approved event once the baseline is frozen", () => {
-    const state = baseState({ baselineApprovedAt: "2026-01-01T00:00:00.000Z" });
+  it("emits a single baseline_approved event with actor: null for a baseline frozen before baselineApprovedBy existed", () => {
+    const state = baseState({ baselineApprovedAt: "2026-01-01T00:00:00.000Z", baselineApprovedBy: null });
     const log = computeAuditLog(state);
     expect(log).toEqual([
       { type: "baseline_approved", date: "2026-01-01T00:00:00.000Z", refId: "baseline", refLabel: "Bāzes tāme", actor: null, detail: null },
+    ]);
+  });
+
+  it("emits a baseline_approved event with the approver's name as actor when baselineApprovedBy is set", () => {
+    const state = baseState({ baselineApprovedAt: "2026-01-01T00:00:00.000Z", baselineApprovedBy: "Jānis Bērziņš" });
+    const log = computeAuditLog(state);
+    expect(log).toEqual([
+      { type: "baseline_approved", date: "2026-01-01T00:00:00.000Z", refId: "baseline", refLabel: "Bāzes tāme", actor: "Jānis Bērziņš", detail: null },
     ]);
   });
 

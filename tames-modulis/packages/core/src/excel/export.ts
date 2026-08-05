@@ -884,7 +884,28 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
   summary.getCell(vatRateRow, 2).value = state.vatRate;
   summary.getCell(vatRateRow, 2).numFmt = PERCENT_FORMAT;
 
-  const tableHeaderRow = vatRateRow + 2; // one blank separator row
+  // Rādīts TIKAI KOPSAVILKUMS lapā (nevis katrā sadaļu/IZMAIŅAS/IZPILDES
+  // AKTI/VĒSTURE lapā, kur writeProjectHeaderBlock arī tiek izsaukts) -
+  // simetriski ar to, kā pārējie "pieņēmumu" lauki (Atlaides/Virsizdevumu/
+  // Peļņas/PVN likme) jau ir TIKAI šeit, nevis katrā lapā. Raw ISO datums
+  // (ne toLocaleDateString), konsekventi ar to, kā šis fails jau raksta
+  // citus datumus (VO/akta ieraksti "IZMAIŅAS"/"IZPILDES AKTI"/"VĒSTURE"
+  // lapās) - skat. CLAUDE.md "Bāzes apstiprinātājs (Sesija 29)".
+  // A frozen baseline (state.baselineApprovedAt !== null) means state.sections
+  // IS the bāze (never mutated after freeze, see models/boq.ts) - declared
+  // here (not further below, where it used to be) so both this block and the
+  // per-sadaļa rendering below can use the same flag.
+  const hasBaseline = state.baselineApprovedAt !== null;
+  if (hasBaseline) {
+    const baselineDateRow = vatRateRow + 1;
+    const baselineByRow = vatRateRow + 2;
+    summary.getCell(baselineDateRow, 1).value = "Bāzes tāme apstiprināta:";
+    summary.getCell(baselineDateRow, 2).value = state.baselineApprovedAt as string;
+    summary.getCell(baselineByRow, 1).value = "Apstiprināja:";
+    summary.getCell(baselineByRow, 2).value = state.baselineApprovedBy ?? "-";
+  }
+
+  const tableHeaderRow = vatRateRow + (hasBaseline ? 4 : 2); // rate rows + optional baseline rows + one blank separator row
   [
     "Sadaļa",
     "Tiešās izmaksas",
@@ -900,13 +921,12 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
   });
 
   const usedSheetNames = new Set<string>(["KOPSAVILKUMS", "IZMAIŅAS", "IZPILDES AKTI", "VĒSTURE"]);
-  // A frozen baseline (state.baselineApprovedAt !== null) means state.sections
-  // IS the bāze (never mutated after freeze, see models/boq.ts) - the sheets
-  // below render the CURRENT scope (bāze + apstiprinātās VO), matching real
-  // FIDIC practice where the working tāme reflects approved changes while a
-  // separate register documents them (see writeVariationOrdersSheet). Without
-  // a frozen baseline, state.sections is just the (draft) tāme as always.
-  const hasBaseline = state.baselineApprovedAt !== null;
+  // The sheets below render the CURRENT scope (bāze + apstiprinātās VO),
+  // matching real FIDIC practice where the working tāme reflects approved
+  // changes while a separate register documents them (see
+  // writeVariationOrdersSheet). Without a frozen baseline, state.sections is
+  // just the (draft) tāme as always. (hasBaseline itself is declared above,
+  // next to the KOPSAVILKUMS rates block, where it's also needed.)
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = hasBaseline ? deriveCurrentSections(state.sections, approvedVariationOrders) : state.sections;
   const exportState: BoqState = hasBaseline ? { ...state, sections: currentSections } : state;
