@@ -1,0 +1,12 @@
+{
+  "name": "tames-modulis",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspace @tames-modulis/core",
+    "dev:web": "npm run dev --workspace @tames-modulis/web",
+    "build:web": "npm run build --workspace @tames-modulis/web"
+  }
+}
