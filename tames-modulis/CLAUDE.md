@@ -1602,6 +1602,63 @@ lietošanas, `git status` tīrs.
   — displayCode/VO delta kolonnas precīzi sakrīt ar jau apstiprināto
   `computeItemCodesAndHistory` semantiku abos ceļos, konsolē nav kļūdu.
 
+#### `VariationOrders.tsx` VO kartes izmaiņu tabula: displayCode (Sesija 27 turpinājums)
+
+Otrs (un pēdējais) Sesijas 24 beigās apzināti ĀRPUS apjoma atstātais
+kandidāts — lietotājs pieprasīja tieši šo pēc Excel eksporta daļas
+pabeigšanas. `VariationOrders.tsx` katras VO kartes izmaiņu tabulas (`vo-
+changes-table`, kolonnas "Sadaļa"/"Pozīcija"/"Izmaiņa") "Pozīcija" kolonna
+rādīja bāzes/manuāli ievadīto `item.code` (vai jaunas pozīcijas gadījumā
+pat neizmantoto manuāli ievadīto "Kods" lauku) - tagad rāda to pašu
+atvasināto `displayCode`, ko `ItemsTable.tsx` "Tāme" cilnē un Excel
+eksports jau rāda.
+
+**Apzināti ĀRPUS apjoma šoreiz arī:** zemāk esošā, ATSEVIŠĶĀ "Mainītās
+pozīcijas (bāze → pašreizējais)" tabula (`vo-diff-table`, visu VO kopējais
+diff skats zem visām kartēm) - lietotāja pieprasījums bija konkrēti "VO
+kartes tabulu", kas ir `vo-changes-table` (katras VO KARTES IEKŠIENĒ), nevis
+šī atsevišķā kopsavilkuma tabula zem tām; tā joprojām rāda `row.code`
+(`diffAgainstBaseline` neatgriež displayCode).
+
+**Implementēts:** `computeItemCodesAndHistory(state.sections,
+approvedVariationOrders)` aprēķināts VIENU REIZI komponentes līmenī
+(`itemDisplay`) - drīkst bez papildu null-pārbaudes, jo šī cilne rādās
+TIKAI pēc bāzes iesaldēšanas (tas pats priekšnosacījums, ko
+`ProjectEditor.tsx` jau pielieto). Katras VO kartes iekšienē jauns
+`voOwnItemDisplay` - TIEŠI TĀ PATI approved-vs-cita nosacījuma zars, ko jau
+lieto blakus esošais `voOwnSections` (apstiprinātai VO = `itemDisplay`
+tieši; proposed/rejected/voided VO = `computeItemCodesAndHistory(state.
+sections, [...approvedVariationOrders, vo])`, simulējot "kas notiktu, ja šī
+arī tiktu apstiprināta" - lai tabula rādītu displayCode, kas atbilst TIEŠI
+tiem pašiem `voOwnSections`, no kuriem jau ņemts pozīcijas apraksts).
+"Pozīcija" šūnas teksts: `${displayCode ?? fallbackCode} ${description}` -
+jaunas pozīcijas gadījumā tās `id` ir pati `change.id` (skat.
+`deriveCurrentState.ts` `applyChange`), tāpēc TAS PATS lookup strādā gan
+esošai, gan jaunai pozīcijai bez atzara.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, projekts sagatavots tieši
+IndexedDB):** bāzes pozīcija "1" (Pozīcija A) - VO-1 (apstiprināta, +5
+pozīcijai "1" UN pievieno jaunu pozīciju ar manuāli ievadītu, VĒLĀK
+ignorētu kodu "manuāls-ignorēts"), VO-2 (VĒL "ierosināta", +2 tai pašai
+pozīcijai "1"). VO-1 kartē: "1a Pozīcija A" (pirmā revīzija) un "3 (VO-1)
+Jauna pozīcija no VO-1" (manuālais kods pareizi ignorēts, auto-numurs no
+sadaļas numerācijas). VO-2 kartē (JOPROJĀM "ierosināta", NAV apstiprināta):
+"1b Pozīcija A" - apstiprina, ka priekšskata simulācija strādā PAREIZI arī
+PIRMS apstiprināšanas (nevis tikai pēc). Konsolē nav kļūdu. Zemāk esošā
+"Mainītās pozīcijas" tabula (ārpus apjoma) palika nemainīga - joprojām rāda
+"1"/"manuāls-ignorēts".
+
+**Definition of Done — pārbaudīts:**
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright, reāls Chromium - VO kartes
+  izmaiņu tabula rāda pareizu displayCode gan apstiprinātai, gan vēl
+  ierosinātai VO (priekšskata simulācija), konsolē nav kļūdu.
+- Nav jaunu core testu (`packages/core` netika mainīts - tikai
+  `packages/web`, kur šim projektam nav automatizētu komponenšu testu,
+  tikai manuāla Playwright pārbaude, tāpat kā jebkurai citai UI izmaiņai
+  šajā projektā).
+
 ### Favicon
 
 Sesijā 16 pievienots vienkāršs favicon — zils noapaļots kvadrāts ar baltu

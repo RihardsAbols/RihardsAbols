@@ -1,5 +1,6 @@
 import {
   computeExecutedToDate,
+  computeItemCodesAndHistory,
   computeRemainingQuantity,
   computeReserveBalance,
   computeVariationOrderDirectTotalImpact,
@@ -104,6 +105,12 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = deriveCurrentSections(state.sections, approvedVariationOrders);
   const diffRows = diffAgainstBaseline(state.sections, currentSections);
+  // Šī cilne rādās TIKAI pēc bāzes iesaldēšanas (skat. ProjectEditor.tsx), tāpēc
+  // droši aprēķināt bez papildu null-pārbaudes - tas pats atvasinājums, ko
+  // ProjectEditor.tsx jau lieto ItemsTable.tsx "Nr." kolonnai, tagad arī VO
+  // kartes izmaiņu tabulai (skat. zemāk voOwnItemDisplay) - konsekventi
+  // rāda vienu un to pašu numerāciju abās cilnēs.
+  const itemDisplay = computeItemCodesAndHistory(state.sections, approvedVariationOrders);
   // "Pasūtītāja rezerve" atlikums NO VISĀM APSTIPRINĀTAJĀM VO - tas pats
   // skaitlis, kas jārāda kā "pieejamais atlikums" jebkurai VĒL "proposed" VO
   // (tā vēl neietekmē šo aprēķinu, skat. computeReserveBalance).
@@ -276,6 +283,13 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
         const voOwnSections =
           vo.status === "approved" ? currentSections : deriveCurrentSections(state.sections, [...approvedVariationOrders, vo]);
         const voOwnSectionsById = new Map(voOwnSections.map((s) => [s.id, s]));
+        // Tas pats approved-vs-proposed nosacījums kā voOwnSections augšā -
+        // apstiprinātai VO tas jau ir itemDisplay (aprēķināts vienu reizi
+        // augšā); vēl proposed/rejected/voided VO simulē "kas notiktu, ja šī
+        // arī būtu apstiprināta", lai izmaiņu tabula rādītu displayCode, kas
+        // atbilst TIEŠI tiem pašiem voOwnSections, no kuriem ņemts apraksts.
+        const voOwnItemDisplay =
+          vo.status === "approved" ? itemDisplay : computeItemCodesAndHistory(state.sections, [...approvedVariationOrders, vo]);
         const resolveSectionName = (sectionId: string): string => {
           const creatingChange = vo.changes.find((c) => c.id === sectionId && c.newSection);
           if (creatingChange?.newSection) return creatingChange.newSection.name;
@@ -345,14 +359,25 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
                         : change.excluded
                           ? "IZSLĒGTA"
                           : `daudzums ${signed(change.quantityDelta)}`;
+                    // Pozīcijas "kods" šeit ir atvasinātais displayCode (skat.
+                    // voOwnItemDisplay augšā), NEVIS bāzes/manuāli ievadītais
+                    // item.code - konsekventi ar "Tāme" cilni (ItemsTable.tsx)
+                    // un Excel eksportu (skat. CLAUDE.md "Pozīciju numerācija +
+                    // VO izmaiņu vēsture"). Jaunas pozīcijas gadījumā tās id ir
+                    // change.id (skat. deriveCurrentState.ts applyChange), tāpēc
+                    // tas pats lookup strādā abiem gadījumiem.
                     const itemLabel = change.newSection
                       ? "-"
-                      : change.itemId === null
-                        ? `${change.newItem?.code ?? ""} ${change.newItem?.description ?? ""}`
-                        : (() => {
-                            const found = voOwnSectionsById.get(change.sectionId)?.items.find((i) => i.id === change.itemId);
-                            return found ? `${found.code} ${found.description}` : change.itemId;
-                          })();
+                      : (() => {
+                          const itemId = change.itemId ?? change.id;
+                          const displayCode = voOwnItemDisplay.get(itemId)?.displayCode;
+                          const description =
+                            change.itemId === null
+                              ? (change.newItem?.description ?? "")
+                              : (voOwnSectionsById.get(change.sectionId)?.items.find((i) => i.id === itemId)?.description ?? "");
+                          const fallbackCode = change.itemId === null ? (change.newItem?.code ?? "") : itemId;
+                          return `${displayCode ?? fallbackCode} ${description}`.trim();
+                        })();
                     return (
                       <tr key={change.id}>
                         <td>{resolveSectionName(change.sectionId)}</td>

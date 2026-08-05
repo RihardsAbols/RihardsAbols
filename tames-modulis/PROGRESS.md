@@ -1786,15 +1786,30 @@ nevienā solī. Pagaidu skripts un `playwright-core` noņemti pēc lietošanas.
   izsaukumā, GAN REĀLĀ pārlūkā (Playwright, klikšķis uz "Eksportēt Excel")
   — abos ceļos identiski rezultāti, konsolē nav kļūdu.
 
+**Papildinājums tajā pašā sesijā — `VariationOrders.tsx` VO kartes izmaiņu
+tabula:** lietotājs pieprasīja arī otro (pēdējo) Sesijas 24 kandidātu -
+katras VO kartes izmaiņu tabulas "Pozīcija" kolonna tagad rāda to pašu
+atvasināto displayCode, ko "Tāme" cilne un Excel eksports jau rāda, nevis
+bāzes/manuāli ievadīto `item.code`. Skat. CLAUDE.md "`VariationOrders.tsx`
+VO kartes izmaiņu tabula: displayCode (Sesija 27 turpinājums)" pilnu
+tehnisko aprakstu - jauns `voOwnItemDisplay` katrai VO kartei (tas pats
+approved-vs-priekšskata nosacījums, ko jau lieto blakus esošais
+`voOwnSections`). Apzināti ĀRPUS apjoma: atsevišķā "Mainītās pozīcijas"
+kopsavilkuma tabula zem visām kartēm (`vo-diff-table`) - lietotāja
+pieprasījums bija konkrēti "VO kartes tabulu".
+
+Manuāli pārbaudīts (Playwright, projekts sagatavots tieši IndexedDB): VO-1
+(apstiprināta) kartē "1a Pozīcija A" un "3 (VO-1) ..." (manuālais kods
+ignorēts); VO-2 (JOPROJĀM "ierosināta") kartē "1b Pozīcija A" - apstiprina,
+ka priekšskata simulācija strādā arī PIRMS apstiprināšanas. Konsolē nav
+kļūdu. Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs. Nav jaunu core
+testu (`packages/core` netika mainīts).
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Sesijas 25, 26 un 27 pabeigtas.** Šobrīd nav zināma neapstiprināta
-kandidāta.
-
-**Joprojām apzināti ārpus apjoma (no Sesijas 24, Sesijā 27 NEIZLABOTS):**
-`VariationOrders.tsx` VO kartes izmaiņu tabulas atjaunināšana, lai arī tā
-rādītu atvasināto displayCode (Excel eksporta puse tagad IR izlabota
-Sesijā 27 — šis ir vienīgais atlikušais Sesijas 24 kandidāts).
+**Sesijas 25, 26 un 27 pabeigtas** (Sesija 27 ietver abus Sesijas 24
+kandidātus - Excel eksportu UN `VariationOrders.tsx` VO kartes tabulu).
+Šobrīd nav zināma neapstiprināta kandidāta.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
 Sesijas 18-27) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
