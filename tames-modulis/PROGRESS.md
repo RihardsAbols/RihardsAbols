@@ -1904,20 +1904,48 @@ lapas pārlādes. Konsolē nav kļūdu.
 - ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
 - ✅ Manuāli pārbaudīts ar Playwright, pilna plūsma, konsolē nav kļūdu.
 
-## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
+## 🔜 IESPĒJAMAIS NĀKAMAIS SOLIS — Sesija 30: VO precedentu redzamība (APSTIPRINĀTS uzdevums, VĒL NAV IEVIESTS)
 
 **Sesijas 28 un 29 pabeigtas** (audita žurnāls, bāzes apstiprinātājs).
-Atlikuši divi Sesijas 28 lietotāja apstiprinātie ceļveža kandidāti (katra
-ar savu `AskUserQuestion` apstiprinājumu PIRMS ieviešanas):
+Lietotājs izvēlējās Sesijas 28 ceļveža **2. kandidātu** kā nākamo (`sākam
+ar 2. punktu`) — **VO precedentu redzamība**: katrai VO eksplicīti (ne
+tikai netieši atvasināti aprēķinos, skat. CLAUDE.md "Tāmes izmaiņu
+(Variation Order) vadība" `computeVariationOrderDirectTotalImpact`) rādīt,
+kuras PRIEKŠĒJĀS apstiprinātās VO bija spēkā šīs VO izveides/apstiprināšanas
+brīdī — piem. teksts "Izveidota, kad spēkā: VO-1, VO-2" katrai VO
+kartei (`VariationOrders.tsx`) un Excel "IZMAIŅAS" reģistra rindai
+(`excel/export.ts` `writeVariationOrdersSheet`).
 
-1. **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
-   izveides brīdī (`approvedVariationOrderIdsAtCreation` vai līdzvērtīgs),
-   lai varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu.
-2. **VO precedentu redzamība** — eksplicīts teksts "Izveidota, kad spēkā:
-   VO-1, VO-2" katrai VO kartei/Excel reģistra rindai.
+**ŠIS UZDEVUMS VĒL NAV SĀKTS** — sarunas čats tika apzināti pārtraukts
+šeit (pirms izpētes/ieviešanas), jo bija kļuvis liels (divas pilnas
+sesijas ar plašu faila lasīšanu/Playwright pārbaudi jau notikušas tajā
+pašā sarunā). Nākamajai sesijai jāsāk ar SAVU `AskUserQuestion` par
+precīzu semantiku PIRMS ieviešanas — konsekventi ar VISU iepriekšējo šī
+projekta praksi. Iespējamie atklātie jautājumi, kas jāapsver (vēl nav
+pajautāti/apstiprināti):
+- Vai "precedents" nozīmē tikai VO ID/numuru sarakstu, ko rādīt kā
+  vienkāršu tekstu, vai arī jāglabā kā strukturēts lauks datu modelī
+  (`VariationOrder` momentuzņēmums, analoģiski Sesijas 29 pieejai)?
+- Vai šī informācija jau ir PILNĪGI atvasināma no esošā masīva secības +
+  `status` filtra (kā `computeVariationOrderDirectTotalImpact` jau dara),
+  tātad NAV vajadzīgs jauns glabātais lauks/migrācija - tikai jauna UI/
+  Excel rādīšana virs jau esošā atvasinājuma? (Šķiet visticamākais, bet
+  JĀPĀRBAUDA un JĀAPSTIPRINA ar lietotāju, nevis jāpieņem.) Ievērot: VO
+  var tikt ANULĒTA (Sesija 23) PĒC citas VO izveides - vai "precedents"
+  jārāda pret VO SARAKSTA STĀVOKLI ŠĪS VO IZVEIDES BRĪDĪ (kas VARĒJA vēlāk
+  mainīties, ja kāda no tām VO tika anulēta), vai vienmēr pret PAŠREIZĒJO
+  apstiprināto sarakstu? Tas ir analogs jautājums tam, ko izpildes akta
+  momentuzņēmuma kandidāts (joprojām neieviests, skat. zemāk) risinātu -
+  ja atbilde ir "jārāda vēsturiski precīzi pat pēc vēlākas anulēšanas",
+  tad TOMĒR var būt vajadzīgs glabāts momentuzņēmuma lauks.
+- Vai rādīt TIKAI apstiprinātās (`status === "approved"`) VO, kas bija
+  spēkā, vai arī jau NORAIDĪTĀS/ANULĒTĀS (audita pilnībai)?
+
+**Atlikušais 1 kandidāts pēc šīs sesijas:**
+- **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
+  izveides brīdī (`approvedVariationOrderIdsAtCreation` vai līdzvērtīgs),
+  lai varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-29) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, kuru no
-augstāk minētajiem 2 kandidātiem viņš vēlas nākamo (vai kādu citu
-konkrētu uzdevumu) - nav pieņemts, ka #1 automātiski ir nākamais tikai
-tāpēc, ka tas uzskaitīts pirmais.
+Sesijas 18-29) un CLAUDE.md pilnībā, TAD uzdot `AskUserQuestion` par
+augstāk minētajiem atklātajiem jautājumiem PIRMS jebkādas ieviešanas.
