@@ -25,8 +25,10 @@ Npm workspace ar divām pakotnēm:
   "Pasūtītāja rezerves", skat. "Pasūtītāja rezerve (Sesija 26)" zemāk), un
   `VariationOrder.statusHistory` (pilna statusa maiņu vēsture, PAPILDUS
   `statusDate`, kas paliek tikai "pēdējās maiņas datums" — skat. "Audita
-  žurnāls (Sesija 28)" zemāk) — skat. "Tāmes izmaiņu (Variation Order)
-  vadība" zemāk.
+  žurnāls (Sesija 28)" zemāk), un `VariationOrder.precedents` (vēsturisks
+  momentuzņēmums — kuras iepriekšējās VO un ar kādu statusu bija zināmas
+  ŠĪS VO izveides brīdī, skat. "VO precedentu redzamība (Sesija 30)" zemāk)
+  — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/models/executionRecord.ts` — `ExecutionRecord`/`ExecutionRecordEntry`
   tipi (izpildes akts par vienu atskaites periodu) — skat. "Tāmes izmaiņu
   (Variation Order) vadība" zemāk.
@@ -66,7 +68,7 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8 -> v9 -> v10 -> v11`, `migrateToCurrent`
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8 -> v9 -> v10 -> v11 -> v12`, `migrateToCurrent`
   atbalsta pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
@@ -1841,8 +1843,96 @@ saturēja precīzi "Bāzes tāme apstiprināta:"/ISO datumu un "Apstiprināja:"/
 - Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
   brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
   pašreizējo) atlikumu.
-- VO precedentu redzamība — eksplicīts teksts "Izveidota, kad spēkā: VO-1,
-  VO-2" katrai VO kartei/Excel reģistra rindai.
+- ~~VO precedentu redzamība~~ — **ieviests Sesijā 30**, skat. zemāk.
+
+### VO precedentu redzamība (Sesija 30)
+
+Otrais no trim Sesijas 28 "Nākamās sesijas" kandidātiem (skat. augšā).
+Lietotājs izvēlējās sākt ar šo (`sākam ar 2. punktu`). Pirms ieviešanas
+`AskUserQuestion` (2 jautājumi, PROGRESS.md Sesijas 30 ieraksta atklātie
+jautājumi): (1) vai precedentu saraksts jārāda pret VĒSTURISKO stāvokli šīs
+VO izveides brīdī, vai vienmēr pret PAŠREIZĒJO apstiprināto VO sarakstu
+(atšķirība parādās TIKAI, ja precedenta VO vēlāk tiek anulēta, skat.
+"Izpildes aktu/VO anulēšana (Sesija 23)") — lietotājs izvēlējās **vēsturiski
+precīzi (glabāts momentuzņēmums)**, NEVIS pilnībā atvasinātu skatu (kas būtu
+bijis konsekventāk ar pārējo VO mehānismu "nekad neglabāts" principu, bet
+neatbilstu "vēsturiski precīzai" semantikai); (2) vai precedentu sarakstā
+rādīt TIKAI apstiprinātās (spēkā esošās) VO, vai VISAS iepriekšējās
+(neatkarīgi no statusa, katru marķējot ar savu statusu) — lietotājs izvēlējās
+**visas iepriekšējās, ar statusu katrai**.
+
+**Datu modelis (`schemaVersion` `11 -> 12`):** `VariationOrder.precedents:
+VariationOrderPrecedent[]` (`models/variationOrder.ts`, jauns tips
+`{ voId, voNumber, statusAtCreation }`) — GLABĀTS (nevis atvasināts no
+pašreizējā `vo.status`), lai vēlāka precedenta VO anulēšana šo sarakstu
+NEIZMAINĪTU. `createVariationOrder` (`variationOrders/deriveCurrentState.ts`)
+inicializē to VIENĀ vietā, izveides brīdī: `existing.map((vo) => ({ voId:
+vo.id, voNumber: vo.number, statusAtCreation: vo.status }))` — `existing` ir
+saucēja padotais PILNAIS VO saraksts (jebkura statusa, tāpat kā VO
+numerācijai `nextVariationOrderNumber`), tāpēc precedentu saraksts satur
+VISAS iepriekšējās VO ar TO PAŠREIZĒJO statusu TIEŠI ŠAJĀ brīdī. Pirmajai VO
+`precedents` ir tukšs masīvs.
+
+**Migrācija (`v11 -> v12`):** vecām VO bez `precedents` lauka rekonstruē
+LABĀKO IESPĒJAMO vēsturi no katras iepriekšējās VO `statusHistory` (Sesija
+28), salīdzinot statusa maiņas datumu ar ŠĪS VO `createdAt` (jaunākais
+ieraksts ar `date <= createdAt`, noklusējums "proposed", ja neviens
+nesasniedz) — tas pats "labākais iespējamais" princips kā `v9->v10`
+migrācijai, un manto TO PAŠU zināmo ierobežojumu: ja precedenta VO
+approve+void cikls notika PIRMS `v9->v10` migrācijas, tās `statusHistory`
+pati jau bija nepilnīga (starpposma datums pazudis), un šī rekonstrukcija to
+nevar labot, tikai strādā ar to, kas pieejams.
+
+**UI** (`VariationOrders.tsx`): katras VO kartes meta rindā (aiz
+datuma/instruēšanas), TIKAI ja `vo.precedents.length > 0` (pirmajai VO rinda
+vispār nerenderējas), jauna rinda "Izveidota, kad zināmas: VO-1
+(Apstiprināts), VO-2 (Noraidīts)" — `formatPrecedents` apvieno katru
+precedentu ar tā `statusAtCreation` iekavās (izmantojot jau esošo
+`STATUS_LABELS`).
+
+**Excel eksports** (`excel/export.ts` `writeVariationOrdersSheet`): jauna 8.
+kolonna "Izveidota, kad zināmas" Izmaiņu reģistra tabulā (`formatPrecedents`,
+tā pati loģika kā UI, "-" tukšam sarakstam) — `VARIATION_ORDERS_SHEET_
+COLUMN_WIDTHS` 8. pozīcijas platums palielināts no 10 uz 40 (šo kolonnu
+diff tabula zemāk lieto īsam "Izslēgts" Jā/Nē tekstam, tāpēc platuma
+kompromiss ir tāds pats "erring wide" paņēmiens kā pārējām koplietotajām
+kolonnām šajā lapā).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma, projekts
+sagatavots tieši IndexedDB, ieskaitot lapas pārlādi persistences
+pārbaudei):** VO-1 (apstiprināta) un VO-2 (izveidota TIEŠI PĒC VO-1
+apstiprināšanas, `precedents` = `[{VO-1, approved}]`). "Izmaiņas (VO)" cilnē
+VO-2 kartē parādījās "Izveidota, kad zināmas: VO-1 (Apstiprināts)", VO-1
+kartei (nav precedentu) rinda vispār nerādījās. **Galvenā pārbaude:** VO-1
+ANULĒTA — VO-2 kartes precedentu rinda PALIKA NEMAINĪTA "VO-1
+(Apstiprināts)" (NEVIS pārgāja uz "Anulēts") - apstiprina "vēsturiski
+precīzi" semantiku (ekrānuzņēmumi pirms/pēc anulēšanas). Pēc "Saglabāt" +
+lapas pārlādes precedentu teksts saglabājās identisks (IndexedDB round-trip
+caur jauno v12 shēmu). Eksportētā `.xlsx` faila "IZMAIŅAS" lapā (pārbaudīta
+ar `exceljs`) 8. kolonna VO-1 rindā "-", VO-2 rindā "VO-1 (Apstiprināts)" -
+identiski UI redzamajam, LAI GAN tajā pašā rindā "Statuss" kolonna VO-1 rādīja
+"Anulēts" (pašreizējais statuss, atsevišķa kolonna no precedentu
+momentuzņēmuma). Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 165/165 testi zaļi (160 + 5 jauni: `createVariationOrder`
+  precedentu snapshot testi (2), migrācijas v11->v12 testi (2:
+  rekonstrukcija ar statusa maiņas laika logiku + jau-klātesošas saglabāšana),
+  1 esošs migrācijas tests atjaunināts ar `precedents: []`).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi, ~196KB galvenais/~959KB excel chunk).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna plūsma (izveide -> precedentu
+  rādīšana -> precedenta VO anulēšana -> precedentu teksts NEMAINĀS ->
+  persistence pēc lapas pārlādes -> Excel eksports), konsolē nav kļūdu.
+
+**Atlikušais 1 kandidāts (Sesijas 28 ceļvedis):**
+- **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
+  izveides brīdī (`approvedVariationOrderIdsAtCreation` vai līdzvērtīgs), lai
+  varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu. Tagad, kad VO
+  precedentu redzamība (šī sesija) apstiprināja "vēsturiski precīzi, glabāts
+  momentuzņēmums" semantiku, šis kandidāts, visticamāk, sekotu TAI PAŠAI
+  pieejai (glabāts lauks, nevis atvasināts) - bet TOMĒR JĀPAJAUTĀ lietotājam
+  PIRMS ieviešanas, konsekventi ar visu iepriekšējo praksi.
 
 ### Favicon
 

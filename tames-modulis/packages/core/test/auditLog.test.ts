@@ -22,6 +22,7 @@ function vo(overrides: Partial<VariationOrder> = {}): VariationOrder {
       { status: "proposed", date: "2026-01-01" },
       { status: "approved", date: "2026-01-05" },
     ],
+    precedents: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-05T00:00:00.000Z",
     ...overrides,

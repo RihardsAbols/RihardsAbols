@@ -728,6 +728,8 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
     expect(sheet.getCell(12, 3).value).toBe("Apstiprināts");
     expect(sheet.getCell(12, 4).value).toBe("Papildu darbi");
     expect(sheet.getCell(12, 7).value).toBe(100);
+    expect(sheet.getCell(11, 8).value).toBe("Izveidota, kad zināmas");
+    expect(sheet.getCell(12, 8).value).toBe("-"); // pirmā VO - nav precedentu
 
     // "Mainītās pozīcijas" title row 14, blank, diff header row 16, data from row 17.
     expect(sheet.getCell(14, 1).value).toBe("Mainītās pozīcijas (bāze -> pašreizējais)");
@@ -745,6 +747,22 @@ describe("exportBoqToWorkbook variation orders (bāze + apstiprinātās VO)", ()
 
     // The unchanged item "c" (sec-2) never appears in the diff table.
     expect(sheet.getCell(19, 1).value).toBeNull();
+  });
+
+  it("shows a VO's precedents column with each earlier VO's number and its status AT THIS VO's creation time (Sesija 30)", () => {
+    const state = sampleState();
+    state.baselineApprovedAt = "2026-01-01T00:00:00.000Z";
+
+    const first = createVariationOrder([], { title: "VO viens", justification: "", instructedBy: "", date: "2026-01-05" });
+    first.status = "approved";
+    const second = createVariationOrder([first], { title: "VO divi", justification: "", instructedBy: "", date: "2026-01-10" });
+    state.variationOrders = [first, second];
+
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("IZMAIŅAS")!;
+
+    expect(sheet.getCell(12, 8).value).toBe("-"); // VO-1: nav iepriekšēju
+    expect(sheet.getCell(13, 8).value).toBe("VO-1 (Apstiprināts)"); // VO-2: VO-1 bija approved izveides brīdī
   });
 
   it("renders a brand-new section (added by a VO) as its own sheet, with every item marked JAUNS, without misaligning existing sections", () => {

@@ -98,6 +98,19 @@ export interface VariationOrder {
    * vo.date }` (izveides brīdis).
    */
   statusHistory: VariationOrderStatusEvent[];
+  /**
+   * VĒSTURISKS momentuzņēmums (glabāts, NEVIS atvasināts no pašreizējā
+   * `status`) - VISAS VO, kas jau eksistēja PIRMS šīs (masīva secībā),
+   * TIEŠI ŠĪS VO IZVEIDES BRĪDĪ, katra ar SAVU STATUSU tajā brīdī - skat.
+   * `variationOrders/deriveCurrentState.ts` `createVariationOrder` un
+   * CLAUDE.md "VO precedentu redzamība (Sesija 30)". Apzināti GLABĀTS
+   * (nevis atvasināts no `vo.status` tagad) - lietotājs apstiprināja
+   * "vēsturiski precīzi" semantiku: ja precedenta VO VĒLĀK tiek anulēta
+   * (skat. "Izpildes aktu/VO anulēšana (Sesija 23)"), šis saraksts PALIEK
+   * NEMAINĪTS, rādot TO, kas bija zināms lēmuma pieņemšanas brīdī, nevis
+   * pašreizējo ainu. Tukšs masīvs pirmajai VO (nav iepriekšēju).
+   */
+  precedents: VariationOrderPrecedent[];
   createdAt: string;
   updatedAt: string;
 }
@@ -107,4 +120,12 @@ export interface VariationOrderStatusEvent {
   status: VariationOrderStatus;
   /** ISO datums, kad statuss mainījās uz šo vērtību. */
   date: string;
+}
+
+/** Viens ieraksts VariationOrder.precedents - skat. tā dokumentāciju. */
+export interface VariationOrderPrecedent {
+  voId: string;
+  voNumber: string;
+  /** Šīs iepriekšējās VO statuss TIEŠI TAGADĒJĀS VO izveides brīdī. */
+  statusAtCreation: VariationOrderStatus;
 }
