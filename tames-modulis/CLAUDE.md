@@ -1838,11 +1838,88 @@ saturēja precīzi "Bāzes tāme apstiprināta:"/ISO datumu un "Apstiprināja:"/
 
 **Nākamās sesijas (atlikušie divi Sesijas 28 kandidāti, katra ar savu
 `AskUserQuestion` apstiprinājumu PIRMS ieviešanas):**
+- ~~VO precedentu redzamība~~ — **ieviests Sesijā 30**, skat. zemāk.
 - Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
   brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
   pašreizējo) atlikumu.
-- VO precedentu redzamība — eksplicīts teksts "Izveidota, kad spēkā: VO-1,
-  VO-2" katrai VO kartei/Excel reģistra rindai.
+
+### VO precedentu redzamība (Sesija 30)
+
+Pēdējais no trim Sesijas 28 "Nākamās sesijas" kandidātiem, kas šobrīd
+ieviests (skat. augšā) — katrai VO EKSPLICĪTI (ne tikai netieši atvasināti
+aprēķinos, skat. `computeVariationOrderDirectTotalImpact` augšā) rāda,
+kuras PRIEKŠĒJĀS VO bija spēkā šīs VO izveides brīdī.
+
+Lietotājs apstiprināja (`AskUserQuestion`, 2 jautājumi PIRMS ieviešanas,
+skat. PROGRESS.md Sesija 30 pilnu formulējumu):
+1. **Atskaites punkts: VĒSTURISKI pēc IZVEIDES datuma** (nevis pašreizējais
+   apstiprinātais saraksts, nevis pēc apstiprināšanas datuma) — precedents
+   rāda katras iepriekšējās VO statusu TIEŠI TAJĀ BRĪDĪ, kad MĒRĶA VO tika
+   izveidota, pat ja tā VĒLĀK mainījusies (piem. apstiprināta VO, kas
+   VĒLĀK anulēta — precedentu sarakstā joprojām rāda "Apstiprināts", jo
+   tas bija patiess tolaik).
+2. **Iekļaut arī noraidītās/anulētās VO** (audita pilnībai) — precedentu
+   saraksts satur VISAS iepriekšējās VO (masīva secībā), katru ar SAVU
+   statusu tajā brīdī, nevis tikai tās, kas bija "approved".
+
+**Pilnībā ATVASINĀTS, NAV vajadzīgs jauns glabāts lauks/migrācija** — apstiprinājās izpētes pieņēmums (skat. PROGRESS.md atklātos jautājumus): `VariationOrder.statusHistory` (Sesija 28) jau glabā katru statusa maiņu ar
+datumu, tāpēc arī "vēsturiski precīzā" versija ir pilnībā rekonstruējama no
+jau esošā `variationOrders` masīva, bez jauna `schemaVersion`.
+
+**Core** (`variationOrders/deriveCurrentState.ts`):
+`computeVariationOrderPrecedents(variationOrders, voId)` — mērķa VO
+"precedenti" ir VISAS VO, kas tai ir priekšā MASĪVA SECĪBĀ (tā pati
+"iepriekšējo VO" definīcija, ko jau lieto
+`computeVariationOrderDirectTotalImpact`), katra ar `statusAtReference`
+lauku (privātā `statusAsOf` palīgfunkcija — pēdējais `statusHistory`
+ieraksts, kura datums <= mērķa VO izveides datums). Atskaites datums ir
+**`target.statusHistory[0].date` (sistēmas izveides-laikspiedols), NEVIS
+`target.date`** (brīvi rediģējams biznesa/instrukcijas datums, kas
+NEGARANTĒ monotonu secību ar masīvu) — pirmais VIENMĒR sakrīt ar VO
+pievienošanas secību masīvā, jo jaunas VO vienmēr pievienotas masīva
+BEIGĀS (`VariationOrders.tsx` `handleCreateVo`).
+
+**UI** (`VariationOrders.tsx`): katrai VO kartei (izņemot pirmo, kam nav
+precedentu) jauna rinda "Iepriekšējās VO šīs VO izveides brīdī: VO-1
+(Apstiprināts), VO-2 (Noraidīts)" (`.vo-precedents-text`, neuzkrītošs pelēks
+stils, tāpat kā `.vo-card-meta`) starp datuma/instruēja rindu un
+pamatojuma tekstu.
+
+**Excel eksports** (`excel/export.ts` `writeVariationOrdersSheet`): jauna
+"Iepriekšējās VO (izveides brīdī)" kolonna (8.) "Izmaiņu reģistra" tabulā
+— DIVAS pirmās tabulas (reģistrs) un otrās (mainīto pozīciju diff) kolonnas
+STARP kopīgotajām 1-9 (skat. `VARIATION_ORDERS_SHEET_COLUMN_WIDTHS`
+komentāru) — kolonnas 8 platums palielināts no 10 uz 34 (iepriekš tikai
+diff tabulas "Izslēgts" vajadzēja to šauru, tagad reģistra precedentu
+teksts prasa vairāk vietas; diff tabulas "Izslēgts" saturs paliek
+lasāms, tikai ar lieku baltumu, tas pats jau dokumentētais "erring wide is
+the safe choice" princips).
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, projekts sagatavots
+tieši IndexedDB, tāpat kā Sesijas 19 pieeja):** 4 VO ķēde, kas apzināti
+konstruēta, lai pārbaudītu tieši "vēsturiski precīzi" uzvedību: VO-1
+(apstiprināta), VO-2 (izveidota PĒC VO-1 apstiprināšanas, VĒLĀK
+noraidīta), VO-3 (izveidota PĒC VO-1/VO-2, VĒLĀK apstiprināta UN TAD
+anulēta), VO-4 (izveidota PĒC VO-3 apstiprināšanas, bet PIRMS VO-3
+anulēšanas, paliek "ierosināta"). Rezultāts: VO-1 kartei nav precedentu
+rindas (pirmā VO); VO-2: "VO-1 (Apstiprināts)"; VO-3: "VO-1 (Apstiprināts),
+VO-2 (Noraidīts)"; **VO-4: "VO-1 (Apstiprināts), VO-2 (Noraidīts), VO-3
+(Apstiprināts)" — LAI GAN VO-3 PAŠAS kartes žetons šobrīd rāda "Anulēts"**
+(apstiprina vēsturiski precīzo uzvedību, ne tikai pašreizējā statusa
+atspoguļojumu). Eksportētā `.xlsx` faila "IZMAIŅAS" lapas 8. kolonna
+(pārbaudīta ar `exceljs`) satur IDENTISKU tekstu tam pašam, ko UI rādīja
+katrai rindai. Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 166/166 testi zaļi (160 + 6 jauni: 5
+  `computeVariationOrderPrecedents` unit testi, 1 jauns Excel eksporta
+  tests reģistra 8. kolonnai).
+- ✅ Typecheck tīrs abās pakotnēs (`tsc -p tsconfig.json` core, `tsc
+  --noEmit` + `vite build` web), bundle izmēri praktiski nemainīgi
+  (~196KB galvenais/~959KB excel chunk).
+- ✅ Manuāli pārbaudīts ar Playwright — 4 VO ķēde, kas apzināti pārbauda
+  vēsturiski precīzo (nevis pašreizējā statusa) uzvedību, gan UI kartēs,
+  gan Excel eksportā, konsolē nav kļūdu.
 
 ### Favicon
 

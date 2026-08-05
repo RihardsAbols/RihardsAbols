@@ -4,6 +4,7 @@ import {
   computeRemainingQuantity,
   computeReserveBalance,
   computeVariationOrderDirectTotalImpact,
+  computeVariationOrderPrecedents,
   createVariationOrder,
   deriveCurrentSections,
   diffAgainstBaseline,
@@ -309,6 +310,12 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
             <div className="vo-card-meta">
               {vo.date} · Instruēja: {vo.instructedBy || "-"}
             </div>
+            {(() => {
+              const precedents = computeVariationOrderPrecedents(state.variationOrders, vo.id);
+              if (precedents.length === 0) return null;
+              const text = precedents.map((p) => `${p.voNumber} (${STATUS_LABELS[p.statusAtReference]})`).join(", ");
+              return <p className="vo-precedents-text">Iepriekšējās VO šīs VO izveides brīdī: {text}</p>;
+            })()}
             {vo.justification && <p className="vo-justification-text">{vo.justification}</p>}
             {vo.status === "voided" && vo.voidedReason && (
               <p className="vo-justification-text">Anulēšanas iemesls: {vo.voidedReason}</p>

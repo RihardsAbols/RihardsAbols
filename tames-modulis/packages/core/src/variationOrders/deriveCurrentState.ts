@@ -1,6 +1,6 @@
 import { calculateItemCosts, calculateSectionDirectTotal } from "../calculations/boq.js";
 import type { BoqItem, BoqSection, BoqState } from "../models/boq.js";
-import type { VariationOrder, VariationOrderChange } from "../models/variationOrder.js";
+import type { VariationOrder, VariationOrderChange, VariationOrderStatus } from "../models/variationOrder.js";
 
 function cloneSections(sections: BoqSection[]): BoqSection[] {
   return sections.map((section) => ({
@@ -172,6 +172,71 @@ export function computeVariationOrderDirectTotalImpact(
 
   const sum = (sections: BoqSection[]) => sections.reduce((total, section) => total + calculateSectionDirectTotal(section), 0);
   return sum(after) - sum(before);
+}
+
+/** Vienas iepriekšējas VO stāvoklis brīdī, kad kāda VĒLĀKA VO tika izveidota - skat. computeVariationOrderPrecedents. */
+export interface VariationOrderPrecedent {
+  voId: string;
+  voNumber: string;
+  /**
+   * Šīs (iepriekšējās) VO statuss TIEŠI TAJĀ BRĪDĪ, kad mērķa VO tika
+   * izveidota - NAV vienmēr tas pats, kas šīs VO PAŠREIZĒJAIS `status` lauks,
+   * jo tas var būt mainījies VĒLĀK (piem. apstiprināta VO var tikt anulēta
+   * pēc tam, kad mērķa VO jau bija izveidota - skat.
+   * computeVariationOrderPrecedents dokumentāciju).
+   */
+  statusAtReference: VariationOrderStatus;
+}
+
+/**
+ * Statusa vērtība, kāda VO bija tieši `referenceDate` brīdī, atvasināta no
+ * `statusHistory` (skat. CLAUDE.md "Audita žurnāls (Sesija 28)") - pēdējais
+ * ieraksts, kura datums <= referenceDate. `statusHistory[0]` vienmēr ir
+ * `{ status: "proposed", date: <VO izveides brīdis> }` (skat.
+ * createVariationOrder), tāpēc šai funkcijai vienmēr ir vismaz viens
+ * derīgs ieraksts <= referenceDate, JA VIEN pati VO netika izveidota PĒC
+ * referenceDate (tas nenotiek šīs funkcijas vienīgajā izsaukuma vietā, skat.
+ * zemāk, jo tur referenceDate vienmēr ir VĒLĀKAS VO izveides brīdis).
+ */
+function statusAsOf(order: VariationOrder, referenceDate: string): VariationOrderStatus {
+  let result: VariationOrderStatus = order.statusHistory[0]?.status ?? "proposed";
+  for (const event of order.statusHistory) {
+    if (event.date > referenceDate) break;
+    result = event.status;
+  }
+  return result;
+}
+
+/**
+ * "Precedenti" mērķa VO (`voId`) - VISAS VO, kas mērķa VO priekšā MASĪVA
+ * SECĪBĀ (tā pati "iepriekšējo VO" definīcija, ko jau lieto
+ * computeVariationOrderDirectTotalImpact), katra ar SAVU statusu TIEŠI TAJĀ
+ * BRĪDĪ, kad MĒRĶA VO tika izveidota (`target.statusHistory[0].date`, NEVIS
+ * `target.date` - pēdējais ir brīvi rediģējams biznesa/instrukcijas datums,
+ * kas negarantē monotonu secību ar masīvu, pirmais ir sistēmas
+ * izveides-laikspiedols, kas VIENMĒR sakrīt ar VO pievienošanas secību
+ * masīvā, skat. VariationOrders.tsx - jaunas VO vienmēr pievienotas masīva
+ * BEIGĀS). Lietotāja apstiprināts dizains (skat. PROGRESS.md Sesija 30):
+ * VĒSTURISKI PRECĪZI pēc izveides datuma, IESKAITOT noraidītās/anulētās VO
+ * (audita pilnībai, ar to statusu tajā brīdī) - NEVIS tikai pašreiz
+ * apstiprinātās. Rezultātā precedenta statuss VAR atšķirties no šīs VO
+ * PAŠREIZĒJĀ `status` lauka (piem. VO, kas bija "approved" mērķa VO
+ * izveides brīdī, bet VĒLĀK anulēta - precedentu sarakstā tā joprojām rāda
+ * "approved", jo tas bija patiess TAJĀ brīdī).
+ *
+ * Pilnībā ATVASINĀTS no jau esošā `variationOrders` masīva + `statusHistory`
+ * (skat. Sesija 28) - nav vajadzīgs jauns glabāts momentuzņēmuma lauks.
+ */
+export function computeVariationOrderPrecedents(variationOrders: VariationOrder[], voId: string): VariationOrderPrecedent[] {
+  const index = variationOrders.findIndex((vo) => vo.id === voId);
+  if (index <= 0) return [];
+  const target = variationOrders[index];
+  const referenceDate = target.statusHistory[0]?.date ?? target.createdAt;
+  return variationOrders.slice(0, index).map((order) => ({
+    voId: order.id,
+    voNumber: order.number,
+    statusAtReference: statusAsOf(order, referenceDate),
+  }));
 }
 
 /** Vienas VO ieguldījums/izmantojums "Pasūtītāja rezervē" - skat. computeReserveBalance. */
