@@ -233,7 +233,17 @@ describe("migrateToCurrent", () => {
     const migrated = migrateToCurrent(v5);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(migrated.baselineApprovedAt).toBe("2025-12-01T00:00:00.000Z");
-    expect(migrated.variationOrders).toEqual([{ ...vo, voidedReason: null, reserveDrawdown: 0 }]);
+    expect(migrated.variationOrders).toEqual([
+      {
+        ...vo,
+        voidedReason: null,
+        reserveDrawdown: 0,
+        statusHistory: [
+          { status: "proposed", date: "2026-01-01" },
+          { status: "approved", date: "2026-01-05" },
+        ],
+      },
+    ]);
   });
 
   it("defaults executionRecords and backfills newSection: null on existing VO changes when migrating v6 data", () => {
@@ -507,6 +517,132 @@ describe("migrateToCurrent", () => {
     const migrated = migrateToCurrent(v8);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(migrated.variationOrders[0].reserveDrawdown).toBe(1250.5);
+  });
+
+  it("reconstructs statusHistory from date/statusDate when migrating v9 data (VO never voided after approval)", () => {
+    const v9 = {
+      schemaVersion: 9,
+      projectId: "proj-19",
+      projectName: "v9 bez statusHistory",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          voidedReason: null,
+          reserveDrawdown: 0,
+          changes: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v9);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0].statusHistory).toEqual([
+      { status: "proposed", date: "2026-01-01" },
+      { status: "approved", date: "2026-01-05" },
+    ]);
+  });
+
+  it("reconstructs only a 'proposed' statusHistory entry when migrating v9 data with statusDate still null", () => {
+    const v9 = {
+      schemaVersion: 9,
+      projectId: "proj-20",
+      projectName: "v9, VO joprojām proposed",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "proposed",
+          statusDate: null,
+          voidedReason: null,
+          reserveDrawdown: 0,
+          changes: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v9);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0].statusHistory).toEqual([{ status: "proposed", date: "2026-01-01" }]);
+  });
+
+  it("preserves an already-present statusHistory during v9->v10 migration", () => {
+    const existingHistory = [
+      { status: "proposed", date: "2026-01-01" },
+      { status: "approved", date: "2026-01-05" },
+      { status: "voided", date: "2026-02-10" },
+    ];
+    const v9 = {
+      schemaVersion: 9,
+      projectId: "proj-21",
+      projectName: "v9 ar jau iestatītu statusHistory",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "voided",
+          statusDate: "2026-02-10",
+          voidedReason: "Kļūda",
+          reserveDrawdown: 0,
+          changes: [],
+          statusHistory: existingHistory,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-02-10T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v9);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0].statusHistory).toEqual(existingHistory);
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {

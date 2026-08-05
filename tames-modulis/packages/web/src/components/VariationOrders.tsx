@@ -138,7 +138,9 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
     const now = new Date().toISOString();
     onUpdate((s) => ({
       ...s,
-      variationOrders: s.variationOrders.map((vo) => (vo.id === voId ? { ...vo, status, statusDate: now, updatedAt: now } : vo)),
+      variationOrders: s.variationOrders.map((vo) =>
+        vo.id === voId ? { ...vo, status, statusDate: now, statusHistory: [...vo.statusHistory, { status, date: now }], updatedAt: now } : vo,
+      ),
     }));
   };
 

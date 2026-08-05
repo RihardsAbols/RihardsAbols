@@ -925,3 +925,71 @@ describe("exportBoqToWorkbook execution records", () => {
     expect(execSheet.getCell(18, 1).value).toBeNull();
   });
 });
+
+describe("exportBoqToWorkbook audit log (VĒSTURE sheet)", () => {
+  it("omits the VĒSTURE sheet for a project with no baseline yet", () => {
+    const state = sampleState();
+    const workbook = exportBoqToWorkbook(state);
+    expect(workbook.getWorksheet("VĒSTURE")).toBeUndefined();
+  });
+
+  it("writes a chronological (newest-first) VĒSTURE sheet covering baseline/VO/execution-record events", () => {
+    const state = sampleStateWithApprovedVariationOrder();
+    // sampleStateWithApprovedVariationOrder mutates vo.status/statusDate
+    // directly (bypassing handleSetStatus/voidVariationOrder), so overwrite
+    // statusHistory here with the equivalent, deterministic proposed->approved
+    // transition this test needs.
+    state.variationOrders[0].statusHistory = [
+      { status: "proposed", date: "2026-01-10" },
+      { status: "approved", date: "2026-01-11" },
+    ];
+    state.executionRecords = [
+      {
+        id: "rec-1",
+        period: "2026-02",
+        date: "2026-02-15",
+        approvedBy: "Inženieris",
+        entries: [],
+        voidedAt: null,
+        voidedReason: null,
+        createdAt: "2026-02-15T00:00:00.000Z",
+        updatedAt: "2026-02-15T00:00:00.000Z",
+      },
+    ];
+
+    const workbook = exportBoqToWorkbook(state);
+    const sheet = workbook.getWorksheet("VĒSTURE")!;
+    expect(sheet).toBeDefined();
+
+    // Header block (7 lines) rows 1-7, blank row 8, title row 9, blank row 10,
+    // table header row 11, data from row 12 - same layout convention as
+    // writeExecutionRecordsSheet/writeVariationOrdersSheet.
+    expect(sheet.getCell(9, 1).value).toBe("Audita žurnāls");
+    expect(sheet.getCell(11, 1).value).toBe("Datums");
+    expect(sheet.getCell(11, 2).value).toBe("Notikums");
+
+    // Newest first: execution record created (2026-02-15) -> VO approved
+    // (2026-01-11) -> VO proposed (2026-01-10) -> baseline (2026-01-01).
+    expect(sheet.getCell(12, 1).value).toBe("2026-02-15");
+    expect(sheet.getCell(12, 2).value).toBe("Izpildes akts izveidots");
+    expect(sheet.getCell(12, 3).value).toBe("Akts: 2026-02");
+    expect(sheet.getCell(12, 4).value).toBe("Inženieris");
+
+    expect(sheet.getCell(13, 1).value).toBe("2026-01-11");
+    expect(sheet.getCell(13, 2).value).toBe("VO apstiprināta");
+    expect(sheet.getCell(13, 3).value).toBe("VO-1");
+    expect(sheet.getCell(13, 4).value).toBe("Pasūtītājs");
+    expect(sheet.getCell(13, 5).value).toBe("Pasūtītāja pieprasījums");
+
+    expect(sheet.getCell(14, 1).value).toBe("2026-01-10");
+    expect(sheet.getCell(14, 2).value).toBe("VO ierosināta");
+
+    expect(sheet.getCell(15, 1).value).toBe("2026-01-01T00:00:00.000Z");
+    expect(sheet.getCell(15, 2).value).toBe("Bāzes tāme iesaldēta");
+    expect(sheet.getCell(15, 3).value).toBe("Bāzes tāme");
+    expect(sheet.getCell(15, 4).value).toBe("-");
+
+    // No 5th event.
+    expect(sheet.getCell(16, 1).value).toBeNull();
+  });
+});

@@ -1,6 +1,7 @@
 import { computeItemCodesAndHistory, deriveCurrentState, summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, CompanyDetails, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { AuditLog } from "./AuditLog.js";
 import { ExecutionRecords } from "./ExecutionRecords.js";
 import { ItemsTable } from "./ItemsTable.js";
 import { VariationOrders } from "./VariationOrders.js";
@@ -55,7 +56,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"tame" | "izmainas" | "izpilde">("tame");
+  const [activeTab, setActiveTab] = useState<"tame" | "izmainas" | "izpilde" | "vesture">("tame");
   // Ephemeral (nesaglabāts) eksporta izvēle, ne pastāvīga projekta īpašība -
   // Pasūtītāja rezerve ir iekšēja darbuzņēmēja uzskaite, tāpēc katrā
   // eksportā jāizvēlas atsevišķi, vai to iekļaut, nevis atceras starp
@@ -385,6 +386,9 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button className={activeTab === "izpilde" ? "tab-active" : ""} onClick={() => setActiveTab("izpilde")}>
             Izpildes akti
           </button>
+          <button className={activeTab === "vesture" ? "tab-active" : ""} onClick={() => setActiveTab("vesture")}>
+            Vēsture
+          </button>
         </div>
       )}
 
@@ -454,6 +458,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
 
       {baselineLocked && activeTab === "izmainas" && <VariationOrders state={state} onUpdate={update} />}
       {baselineLocked && activeTab === "izpilde" && <ExecutionRecords state={state} onUpdate={update} />}
+      {baselineLocked && activeTab === "vesture" && <AuditLog state={state} />}
     </div>
   );
 }

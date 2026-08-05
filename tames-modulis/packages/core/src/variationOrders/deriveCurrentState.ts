@@ -103,6 +103,7 @@ export function createVariationOrder(existing: VariationOrder[], input: CreateVa
     voidedReason: null,
     reserveDrawdown: 0,
     changes: [],
+    statusHistory: [{ status: "proposed", date: now }],
     createdAt: now,
     updatedAt: now,
   };
@@ -136,7 +137,9 @@ export function voidVariationOrder(variationOrders: VariationOrder[], voId: stri
   }
   const now = new Date().toISOString();
   return variationOrders.map((vo) =>
-    vo.id === voId ? { ...vo, status: "voided", statusDate: now, voidedReason: reason, updatedAt: now } : vo,
+    vo.id === voId
+      ? { ...vo, status: "voided", statusDate: now, voidedReason: reason, statusHistory: [...vo.statusHistory, { status: "voided", date: now }], updatedAt: now }
+      : vo,
   );
 }
 

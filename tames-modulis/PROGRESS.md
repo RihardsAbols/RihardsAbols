@@ -1805,13 +1805,88 @@ ka priekšskata simulācija strādā arī PIRMS apstiprināšanas. Konsolē nav
 kļūdu. Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs. Nav jaunu core
 testu (`packages/core` netika mainīts).
 
+## Sesija 28 — Audita žurnāls
+
+Lietotājs pieprasīja IZPĒTI (ne uzreiz ieviešanu): vai sistēmā ir pietiekama
+darbību/audita vēsture, lai lietotājs CAUR SISTĒMU (nevis Git vēsturi vai
+minot) varētu noteikt piecas lietas autoritatīvam FIDIC inženierim:
+1. Bāzes tāmes apstiprināšanas datums — redzams UI?
+2. Vai pēc bāzes iesaldēšanas iespējams ievest jaunu bāzes versiju?
+3. Izpildes aktu versijas — pret kādu tāmes stāvokli katrs sastādīts?
+4. VO versijas — pret kādu iepriekšējo VO stāvokli katra izveidota?
+5. Vienota hronoloģiska vēsture — vai eksistē VIENA vieta, kas apvieno visus
+   notikumus?
+
+**Izpētes rezultāti (faktiskā koda pārbaude, ne tikai CLAUDE.md apraksts):**
+1. **DAĻĒJI ir** — `baselineApprovedAt` REDZAMS UI banierī
+   (`ProjectEditor.tsx`), bet NAV Excel eksportā (tikai iekšēji kā
+   `hasBaseline` karogs) un NAV apstiprinātāja lauka (`baselineApprovedBy`
+   modelī vispār nav, atšķirībā no VO/akta `instructedBy`/`approvedBy`).
+2. **APSTIPRINĀTS: nav atbalstīts, apzināta arhitektūra** — "Importēt Excel"
+   poga `disabled={baselineLocked}`, vienīgais ceļš izmaiņām pēc
+   iesaldēšanas ir VO.
+3. **NĒ, trūkst** — `computeRemainingQuantity` VIENMĒR rēķina pret
+   PAŠREIZĒJO (jaunāko) daudzumu, akta vēstures tabula NEMAZ nerāda
+   "atlikumu" per-aktam (tikai "Kopā izpildīts šajā periodā"), tāpēc nav
+   glabāts NEKĀDS "tāmes stāvokļa momentuzņēmums akta izveides brīdī".
+4. **NĒ, tikai netieši atvasināts** — `computeVariationOrderDirectTotalImpact`
+   korekti atvasina ietekmi no masīva secības + statusa filtra aprēķinam,
+   bet VO kartē/Excel reģistrā NEKUR neparādās eksplicīts teksts "šī VO
+   izveidota, kad spēkā bija VO-1, VO-2".
+5. **NĒ, nav** — informācija bija izkaisīta pa 4 vietām (bāzes baneris, VO
+   karšu saraksts, akta vēstures tabula, divas atsevišķas Excel lapas) bez
+   viena unificēta "audit log" skata.
+
+**Izpētes gaitā atklāts arī papildu, iepriekš nedokumentēts defekts:**
+`VariationOrder.statusDate` ir VIENS lauks, ko pārraksta gan apstiprinot/
+noraidot, gan VĒLĀK anulējot — apstiprināšanas datums NEATGRIEZENISKI
+pazūd, ja VO vēlāk anulēta.
+
+**Lietotāja lēmums (pēc `AskUserQuestion` ar pilnu izpētes kopsavilkumu):**
+ieviest vienotu audita žurnālu TAGAD (Sesija 28), pārējos 4 atklātos
+trūkumus (izņemot #2, kas ir apzināta, pareiza arhitektūra, ne trūkums)
+risināt pakāpeniski turpmākās sesijās, mērķis — FIDIC-līmeņa pierādījumu
+pietiekamība. Lietotājs izvēlējās "Vispirms plāns" ceļu — plāns sagatavots
+(`EnterPlanMode`/`ExitPlanMode`) un apstiprināts PIRMS ieviešanas.
+
+**Ieviests** (pilns tehniskais apraksts CLAUDE.md "Audita žurnāls (Sesija
+28)"): `VariationOrder.statusHistory` (jauns lauks, labo statusDate
+pārrakstīšanas datu zudumu, `schemaVersion` `9 -> 10`), `computeAuditLog`
+(`src/audit/auditLog.ts`, jauns fails/modulis), jauna "Vēsture" cilne
+(`AuditLog.tsx`), jauna "VĒSTURE" Excel darblapa.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi):** projekts ar 1 sadaļu/pozīciju, bāze iesaldēta,
+VO izveidota -> apstiprināta -> ANULĒTA, izpildes akts izveidots ->
+ANULĒTS. "Vēsture" cilne rādīja visus 6 notikumus pareizā hronoloģiskā
+secībā ar pareiziem laukiem — VO apstiprināšanas notikuma datums SAGLABĀJĀS
+atsevišķi no anulēšanas notikuma datuma (statusHistory labojums strādā).
+Pēc lapas pārlādes viss saglabājās identiski (IndexedDB round-trip caur
+v10 shēmu). Eksportētā `.xlsx` faila "VĒSTURE" lapa (pārbaudīta ar
+`exceljs`) satur identiskus datus UI redzamajiem. Konsolē nav kļūdu.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 154/154 testi zaļi (146 + 8 jauni).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs.
+- ✅ Manuāli pārbaudīts ar Playwright, pilna plūsma, konsolē nav kļūdu.
+
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 
-**Sesijas 25, 26 un 27 pabeigtas** (Sesija 27 ietver abus Sesijas 24
-kandidātus - Excel eksportu UN `VariationOrders.tsx` VO kartes tabulu).
-Šobrīd nav zināma neapstiprināta kandidāta.
+**Sesija 28 pabeigta** (audita žurnāls). Lietotāja apstiprināts ceļvedis
+turpmākajām sesijām (katra ar savu `AskUserQuestion` apstiprinājumu PIRMS
+ieviešanas, konsekventi ar visu iepriekšējo prakses šajā projektā):
+
+1. **Bāzes apstiprinātājs** — `baselineApprovedBy` lauks (`BoqState`),
+   redzams banierī un Excel galvenes blokā, kā `actor` audita žurnāla
+   `baseline_approved` notikumam.
+2. **Izpildes akta momentuzņēmums** — kuras VO bija apstiprinātas akta
+   izveides brīdī (`approvedVariationOrderIdsAtCreation` vai līdzvērtīgs),
+   lai varētu rādīt VĒSTURISKO (nevis tikai pašreizējo) atlikumu.
+3. **VO precedentu redzamība** — eksplicīts teksts "Izveidota, kad spēkā:
+   VO-1, VO-2" katrai VO kartei/Excel reģistra rindai.
 
 **Ieteikums nākamajai sesijai:** izlasīt šo PROGRESS.md ierakstu (īpaši
-Sesijas 18-27) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, vai ir kāds
-konkrēts nākamais uzdevums - nav gatava kandidātu saraksta, ko piedāvāt
-bez papildu konteksta no lietotāja.
+Sesijas 18-28) un CLAUDE.md pilnībā, tad PAJAUTĀT lietotājam, kuru no
+augstāk minētajiem 3 kandidātiem viņš vēlas nākamo (vai kādu citu
+konkrētu uzdevumu) - nav pieņemts, ka #1 automātiski ir nākamais tikai
+tāpēc, ka tas uzskaitīts pirmais.

@@ -19,10 +19,13 @@ Npm workspace ar divām pakotnēm:
   aktu uzskaite, skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
 - `src/models/variationOrder.ts` — `VariationOrder`/`VariationOrderChange`
   tipi, ieskaitot `VariationOrderChange.newSection` (VO var izveidot
-  pavisam jaunu sadaļu, ne tikai pozīciju esošā) un
+  pavisam jaunu sadaļu, ne tikai pozīciju esošā),
   `VariationOrder.reserveDrawdown` (EUR summa, ko VO izmanto no atvasinātās
-  "Pasūtītāja rezerves", skat. "Pasūtītāja rezerve (Sesija 26)" zemāk) —
-  skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  "Pasūtītāja rezerves", skat. "Pasūtītāja rezerve (Sesija 26)" zemāk), un
+  `VariationOrder.statusHistory` (pilna statusa maiņu vēsture, PAPILDUS
+  `statusDate`, kas paliek tikai "pēdējās maiņas datums" — skat. "Audita
+  žurnāls (Sesija 28)" zemāk) — skat. "Tāmes izmaiņu (Variation Order)
+  vadība" zemāk.
 - `src/models/executionRecord.ts` — `ExecutionRecord`/`ExecutionRecordEntry`
   tipi (izpildes akts par vienu atskaites periodu) — skat. "Tāmes izmaiņu
   (Variation Order) vadība" zemāk.
@@ -43,6 +46,9 @@ Npm workspace ar divām pakotnēm:
   `voidExecutionRecord` (anulē aktu, skat. "Izpildes aktu/VO anulēšana
   (Sesija 23)" zemāk) — skat. "Tāmes izmaiņu (Variation Order) vadība"
   zemāk.
+- `src/audit/auditLog.ts` — `computeAuditLog` (apvieno bāzes iesaldēšanu,
+  katras VO statusa maiņu, un katra izpildes akta izveidi/anulēšanu VIENĀ
+  hronoloģiskā sarakstā), skat. "Audita žurnāls (Sesija 28)" zemāk.
 - `src/storage/StorageAdapter.ts` — glabāšanas saskarne
   (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
   (fails <-> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
@@ -59,7 +65,7 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8`, `migrateToCurrent`
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8 -> v9 -> v10`, `migrateToCurrent`
   atbalsta pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
@@ -188,8 +194,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   `exportBoqToBuffer`/`importBoqFromBuffer` ar dinamisku
   `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis statiski augšā
   failā — skat. "Bundle izmērs / code-splitting" zemāk. "Apstiprināt bāzes
-  tāmi" poga un "Tāme"/"Izmaiņas (VO)"/"Izpildes akti" cilnes pēc
-  iesaldēšanas — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  tāmi" poga un "Tāme"/"Izmaiņas (VO)"/"Izpildes akti"/"Vēsture" cilnes pēc
+  iesaldēšanas — skat. "Tāmes izmaiņu (Variation Order) vadība" un "Audita
+  žurnāls (Sesija 28)" zemāk.
 - `src/components/VariationOrders.tsx` — "Izmaiņu" cilnes saturs (VO
   izveide/apstiprināšana/noraidīšana, izmaiņu pievienošana — ieskaitot
   jaunas sadaļas izveidi, atlikuma rādīšana pirms izmaiņas pievienošanas,
@@ -199,6 +206,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   (jauna izpildes akta ievade pa sadaļām ar izpildīts/atlikums kolonnām,
   aktu vēsture, izpildes akta Excel imports ar priekšskata/sasaistes soli)
   — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+- `src/components/AuditLog.tsx` — "Vēsture" cilnes saturs (viena
+  hronoloģiska tabula, `computeAuditLog` rezultāts, nav virtualizēta —
+  skat. "Audita žurnāls (Sesija 28)" zemāk).
 - `src/components/ExecutionEntryTable.tsx` — virtualizēta pozīciju tabula
   izpildes akta ievadei (tā pati tehnika kā `ItemsTable.tsx`, skat.
   "Pozīciju tabulas virtualizācija" un "Tāmes izmaiņu (Variation Order)
@@ -1658,6 +1668,109 @@ PIRMS apstiprināšanas (nevis tikai pēc). Konsolē nav kļūdu. Zemāk esošā
   `packages/web`, kur šim projektam nav automatizētu komponenšu testu,
   tikai manuāla Playwright pārbaude, tāpat kā jebkurai citai UI izmaiņai
   šajā projektā).
+
+### Audita žurnāls (Sesija 28)
+
+Lietotājs pieprasīja izpēti (ne uzreiz ieviešanu): vai sistēmā ir
+pietiekama audita/vēstures izsekojamība, lai lietotājs CAUR SISTĒMU (nevis
+minot vai skatoties Git vēsturē) varētu noteikt bāzes/VO/izpildes aktu
+notikumu pilnu ainu autoritatīvam FIDIC inženierim. Izpēte (skat.
+PROGRESS.md Sesija 28 pilnu jautājumu sarakstu) atklāja: informācija bija
+IZKAISĪTA pa 4 vietām (bāzes iesaldēšanas baneris, VO karšu saraksts,
+izpildes aktu vēstures tabula, divas atsevišķas Excel lapas) bez viena
+hronoloģiska skata. Lietotājs apstiprināja: ieviest vienotu audita žurnālu
+TAGAD, pārējos atklātos trūkumus (bāzes apstiprinātājs, izpildes akta
+momentuzņēmums, VO precedentu redzamība — skat. "Nākamās sesijas" zemāk)
+risināt pakāpeniski turpmākās sesijās.
+
+**Papildu, iepriekš nedokumentēts defekts atklāts izpētes gaitā, kas tieši
+ietekmēja šo sesiju:** `VariationOrder.statusDate` bija VIENS lauks, ko
+pārraksta gan apstiprinot/noraidot (`VariationOrders.tsx` `handleSetStatus`),
+gan VĒLĀK anulējot (`voidVariationOrder`) — VO, kas tika apstiprināta un
+VĒLĀK anulēta, PĒC anulēšanas glabāja TIKAI anulēšanas datumu;
+apstiprināšanas datums bija NEATGRIEZENISKI pazudis no datiem, ne tikai
+nerādīts kaut kur. Audita žurnāls, kas balstītos TIKAI uz šo lauku,
+nevarētu korekti rādīt "apstiprināta X, anulēta Y" — tiešs pretstats
+sesijas mērķim. Tāpēc šī sesija vispirms labo šo datu zudumu.
+
+**Datu modelis (`schemaVersion` `9 -> 10`):** `VariationOrder.statusHistory:
+VariationOrderStatusEvent[]` (`{ status, date }`), PAPILDUS jau esošajam
+`statusDate` (kas paliek nemainīgs — "pēdējās maiņas datums", esošais kods,
+kas to lieto, nav skarts). `createVariationOrder`
+(`variationOrders/deriveCurrentState.ts`) inicializē ar
+`[{ status: "proposed", date: now }]`; `handleSetStatus`
+(`VariationOrders.tsx`) un `voidVariationOrder` katrs PIEVIENO jaunu
+ierakstu (nevis pārraksta). **Migrācija (`v9 -> v10`):** katrai VO bez
+`statusHistory` rekonstruē LABĀKO IESPĒJAMO vēsturi no `vo.date`/
+`vo.statusDate` (proposed pie `vo.date`, un, ja `statusDate` iestatīts,
+papildus pašreizējais status pie tā) — pareizi VO, kas nekad netika
+anulēta pēc apstiprināšanas/noraidīšanas; VO, kur apstiprināšana+anulēšana
+notika PIRMS šīs migrācijas, starpposma apstiprināšanas datums PALIEK
+PAZUDIS (jau esošs datu zudums no pirms šī labojuma, migrācija to nevar
+atgūt, tikai novērš turpmāku zudumu — dokumentēts migrācijas komentārā).
+
+**Core** (`src/audit/auditLog.ts`, jauns fails, eksportēts arī no
+`src/index.ts`): `computeAuditLog(state)` — tīra funkcija, apvieno VISUS
+notikumus VIENĀ hronoloģiskā (jaunākais pirmais) sarakstā:
+- Bāzes iesaldēšana (`state.baselineApprovedAt`, ja iestatīts) — VIENS
+  notikums, `actor: null` (bāzei nav sava apstiprinātāja lauka, skat.
+  "Nākamās sesijas" zemāk).
+- Katrai VO, VIENS notikums PER `statusHistory` ieraksts (`vo_proposed`/
+  `vo_approved`/`vo_rejected`/`vo_voided`) — `actor: vo.instructedBy`,
+  `detail: vo.justification` (proposed/approved/rejected) vai
+  `vo.voidedReason` (voided).
+- Katram izpildes aktam, `execution_record_created`
+  (`date: record.date` — akta PAŠA (biznesa) datums, nevis sistēmas
+  `createdAt`, konsekventi ar to, ka izpildes akta datums FIDIC praksē ir
+  pats akts, ne tā digitalizēšanas brīdis) un, ja anulēts, papildus
+  `execution_record_voided` (`date: record.voidedAt`).
+
+**UI:** ceturtā cilne "Vēsture" (`AuditLog.tsx`, jauns komponents) blakus
+"Tāme"/"Izmaiņas (VO)"/"Izpildes akti", rādās TIKAI pēc bāzes iesaldēšanas
+(tas pats priekšnosacījums kā pārējām). Vienkārša tabula (Datums/Notikums/
+Atsauce/Persona/Piezīme) — NAV virtualizēta, jo audita notikumu skaits ir
+mazuma kārtā desmitiem/simtos, nevis tūkstošos kā pozīciju tabulām (skat.
+"Pozīciju tabulas virtualizācija" augšā, kāpēc TĀ tabula to vajadzēja).
+
+**Excel eksports:** jauna "VĒSTURE" darblapa (`writeAuditLogSheet`,
+`excel/export.ts`), TAS PATS paraugs kā "IZMAIŅAS"/"IZPILDES AKTI" lapām
+(galvenes bloks + viena tabula), pievienota AIZ "IZPILDES AKTI" lapas.
+Renderēta TIKAI, ja `computeAuditLog` atgriež vismaz 1 notikumu.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi persistences pārbaudei):** projekts ar 1 sadaļu/
+pozīciju, bāze iesaldēta, VO izveidota -> apstiprināta -> ANULĒTA (lai
+pārbaudītu `statusHistory` visus trīs ierakstus), izpildes akts izveidots
+-> ANULĒTS. "Vēsture" cilne rādīja visus 6 notikumus pareizā hronoloģiskā
+secībā ar pareiziem laukiem (piem. VO anulēšanas notikumam `actor:
+"Pasūtītājs"` no `instructedBy`, `detail`: anulēšanas iemesls — VO
+apstiprināšanas notikumam atsevišķi saglabāts savs datums, NAV pazudis).
+PĒC LAPAS PĀRLĀDES viss saglabājās identiski (IndexedDB round-trip caur
+jauno v10 shēmu). Eksportētā `.xlsx` faila "VĒSTURE" lapa (pārbaudīta ar
+`exceljs`) satur IDENTISKus datus tiem pašiem, ko UI rādīja. Konsolē nav
+kļūdu nevienā solī.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 154/154 testi zaļi (146 + 8 jauni: 6 `computeAuditLog` testi,
+  2 jauni `excel.test.ts` testi VĒSTURE lapai; migrācijas v9->v10 testi
+  `storage.test.ts` — reconstrukcija ar/bez statusDate, jau-klātesošas
+  statusHistory saglabāšana).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi, ~195KB galvenais/~958KB excel chunk).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna plūsma (bāze -> VO
+  izveide/apstiprināšana/anulēšana -> akts izveide/anulēšana -> "Vēsture"
+  cilne -> Excel eksports -> lapas pārlāde), konsolē nav kļūdu.
+
+**Nākamās sesijas (lietotāja apstiprināts ceļvedis, katra ar savu
+`AskUserQuestion` apstiprinājumu PIRMS ieviešanas):**
+- Bāzes apstiprinātājs — `baselineApprovedBy` lauks, redzams banierī un
+  Excel galvenes blokā, kā `actor` audita žurnāla `baseline_approved`
+  notikumam.
+- Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
+  brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
+  pašreizējo) atlikumu.
+- VO precedentu redzamība — eksplicīts teksts "Izveidota, kad spēkā: VO-1,
+  VO-2" katrai VO kartei/Excel reģistra rindai.
 
 ### Favicon
 

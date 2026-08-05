@@ -642,7 +642,8 @@ body {
 }
 
 .execution-entry-table,
-.execution-history-table {
+.execution-history-table,
+.audit-log-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
@@ -652,7 +653,9 @@ body {
 .execution-entry-table th,
 .execution-entry-table td,
 .execution-history-table th,
-.execution-history-table td {
+.execution-history-table td,
+.audit-log-table th,
+.audit-log-table td {
   border-bottom: 1px solid #eee;
   padding: 0.25rem 0.4rem;
   text-align: left;

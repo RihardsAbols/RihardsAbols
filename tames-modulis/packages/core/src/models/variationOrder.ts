@@ -86,6 +86,25 @@ export interface VariationOrder {
    */
   reserveDrawdown: number;
   changes: VariationOrderChange[];
+  /**
+   * PILNA statusa maiņu vēsture, viens ieraksts katrai maiņai (proposed ->
+   * approved/rejected, un, ja vēlāk anulēta, approved -> voided) - PAPILDUS
+   * `statusDate` (kas paliek "pēdējās maiņas datums", nemainīts). Vajadzīgs,
+   * jo `statusDate` tiek PĀRRAKSTĪTS katrā maiņā (skat.
+   * `variationOrders/deriveCurrentState.ts` `voidVariationOrder`) - bez šī
+   * lauka apstiprināšanas datums PAZUDĪS neatgriezeniski, ja VO vēlāk
+   * anulēta, kas sagrautu audita žurnālu (skat. CLAUDE.md "Audita žurnāls
+   * (Sesija 28)"). Pirmais ieraksts vienmēr `{ status: "proposed", date:
+   * vo.date }` (izveides brīdis).
+   */
+  statusHistory: VariationOrderStatusEvent[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** Viens ieraksts VariationOrder.statusHistory - skat. tā dokumentāciju. */
+export interface VariationOrderStatusEvent {
+  status: VariationOrderStatus;
+  /** ISO datums, kad statuss mainījās uz šo vērtību. */
+  date: string;
 }

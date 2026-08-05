@@ -101,6 +101,10 @@ export interface BoqState {
   updatedAt: string;
 }
 
+// v10 pievienoja VariationOrder.statusHistory (pilna statusa maiņu vēsture,
+// skat. models/variationOrder.ts) - bez tā apstiprināšanas datums pazūd
+// neatgriezeniski, ja VO vēlāk anulēta (statusDate tiek pārrakstīts), kas
+// sagrautu audita žurnālu (skat. CLAUDE.md "Audita žurnāls (Sesija 28)").
 // v9 pievienoja VariationOrder.reserveDrawdown (EUR summa, ko VO izmanto no
 // atvasinātās "Pasūtītāja rezerves" - uzkrātas no izslēgtu/samazinātu
 // pozīciju ietaupījuma, skat. variationOrders/deriveCurrentState.ts
@@ -123,7 +127,7 @@ export interface BoqState {
 // `unitPrice` with a darba alga/materiāli/mehānismi split and added
 // overheadRate/profitRate, matching the Līguma tāme format used by the
 // izpildes-akts-validacija skill (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;
