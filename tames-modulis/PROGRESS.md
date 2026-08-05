@@ -1760,23 +1760,31 @@ pārrakstīts, jo tā iepriekšējā pārbaude (fiksēta kolonnas nobīde) vairs
 nebija pareizais fokuss — tagad pārbauda ar galvenes tekstu, ne pozīciju.
 Kopā **143/143 core testi zaļi** (141 + 2 jauni).
 
-**Manuāli pārbaudīts** (pagaidu skripts ar `tsx`, tieši izsaucot
-`exportBoqToBuffer` un pārlasot rezultātu ar `exceljs`, izdzēsts pēc
-lietošanas): projekts ar 2 bāzes pozīcijām, 3 apstiprinātām VO (2 maina
-esošu pozīciju, 1 pievieno jaunu) — displayCode ("1b" ar pareizi izlaistu
-"VO-2" burtu, "3 (VO-2)" jaunai pozīcijai) un VO delta kolonnu vērtības
-(skaitliski, ieskaitot "JAUNS: 3" marķieri) precīzi sakrita ar jau
-apstiprināto `computeItemCodesAndHistory` semantiku.
+**Manuāli pārbaudīts (Solis 1, tiešs core izsaukums):** pagaidu skripts ar
+`tsx`, tieši izsaucot `exportBoqToBuffer` un pārlasot rezultātu ar
+`exceljs`, izdzēsts pēc lietošanas: projekts ar 2 bāzes pozīcijām, 3
+apstiprinātām VO (2 maina esošu pozīciju, 1 pievieno jaunu) — displayCode
+("1b" ar pareizi izlaistu "VO-2" burtu, "3 (VO-2)" jaunai pozīcijai) un VO
+delta kolonnu vērtības (skaitliski, ieskaitot "JAUNS: 3" marķieri) precīzi
+sakrita ar jau apstiprināto `computeItemCodesAndHistory` semantiku.
+
+**Manuāli pārbaudīts (Solis 2, reāls pārlūks, Playwright):** lietotājs
+pieprasīja arī vizuālu pārbaudi pārlūkā. `playwright-core` instalēts
+pagaidu pārbaudei (noņemts pēc lietošanas), `npm run dev:web` palaists,
+tas pats VO-1/VO-2/VO-3 scenārijs sagatavots tieši IndexedDB, projekts
+atvērts caur reālu UI klikšķi. "Tāme" cilnes ekrānuzņēmums apstiprināja
+identisku ainu tam, ko UI jau rādīja kopš Sesijas 24. Reāls klikšķis uz
+"Eksportēt Excel" (nevis tiešs funkcijas izsaukums) -> lejupielādētais
+`.xlsx` fails satur IDENTISKAS vērtības Solim 1. Konsolē nav kļūdu
+nevienā solī. Pagaidu skripts un `playwright-core` noņemti pēc lietošanas.
 
 **Definition of Done — pārbaudīts:**
 - ✅ Core: 143/143 testi zaļi (2 jauni šai funkcionalitātei).
 - ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
   praktiski nemainīgi).
-- ✅ Manuāli pārbaudīts ar reālu eksportētu `.xlsx` failu (tiešs
-  `exportBoqToBuffer` izsaukums + `exceljs` pārlasīšana).
-- ⚠️ NAV pārbaudīts pārlūkā ar Playwright — šī sesija mainīja tikai
-  `packages/core`, `packages/web` UI (eksporta poga) nemainījās un jau
-  izsauc to pašu `exportBoqToBuffer`.
+- ✅ Manuāli pārbaudīts ar reālu eksportētu `.xlsx` failu, GAN tiešā core
+  izsaukumā, GAN REĀLĀ pārlūkā (Playwright, klikšķis uz "Eksportēt Excel")
+  — abos ceļos identiski rezultāti, konsolē nav kļūdu.
 
 ## 🔜 IESPĒJAMIE NĀKAMIE SOĻI (kandidātu saraksts, NAV apstiprināts uzdevums)
 

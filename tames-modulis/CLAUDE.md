@@ -1567,28 +1567,40 @@ apstiprināta VO); pārrakstīts, lai pārbaudītu ar galvenes TEKSTU
 testam vienmēr bija izpildes kolonnu neesamība, nevis konkrēta kolonnas
 nobīde. Kopā **143/143 core testi zaļi** (141 + 2 jauni).
 
-**Manuāli pārbaudīts** (pagaidu skripts ar `tsx`, tieši izsaucot
-`exportBoqToBuffer` un pārlasot rezultātu ar `exceljs`, izdzēsts pēc
-lietošanas, tāpat kā iepriekšējo sesiju konvencija): projekts ar 2 bāzes
-pozīcijām vienā sadaļā — VO-1 (+5 pozīcijai "1"), VO-2 (pievieno jaunu
-pozīciju), VO-3 (+2 pozīcijai "1"). Pozīcija "1" -> "1b" ("VO-2 burts
-izlaists", jo tā pozīciju nemainīja — tieši Sesijas 24 dokumentētā
-semantika), VO-1 kolonnā 5/30€, VO-2 kolonnā "-"/"-", VO-3 kolonnā 2/12€.
-Nemainītā pozīcija "2" -> paliek "2", visās VO kolonnās "-". Jaunā pozīcija
--> "3 (VO-2)" (manuāli ievadītais kods ignorēts), VO-2 kolonnā "JAUNS: 3"/9€,
-pārējās "-".
+**Manuāli pārbaudīts (Solis 1 — tiešs core izsaukums):** pagaidu skripts ar
+`tsx`, tieši izsaucot `exportBoqToBuffer` un pārlasot rezultātu ar
+`exceljs`, izdzēsts pēc lietošanas: projekts ar 2 bāzes pozīcijām vienā
+sadaļā — VO-1 (+5 pozīcijai "1"), VO-2 (pievieno jaunu pozīciju), VO-3 (+2
+pozīcijai "1"). Pozīcija "1" -> "1b" ("VO-2 burts izlaists", jo tā pozīciju
+nemainīja — tieši Sesijas 24 dokumentētā semantika), VO-1 kolonnā 5/30€,
+VO-2 kolonnā "-"/"-", VO-3 kolonnā 2/12€. Nemainītā pozīcija "2" -> paliek
+"2", visās VO kolonnās "-". Jaunā pozīcija -> "3 (VO-2)" (manuāli ievadītais
+kods ignorēts), VO-2 kolonnā "JAUNS: 3"/9€, pārējās "-".
+
+**Manuāli pārbaudīts (Solis 2 — reāls pārlūks, Playwright, pēc lietotāja
+pieprasījuma "pārbaudi arī pārlūkā, lai redzētu eksportēto failu
+vizuāli"):** `playwright-core` instalēts pagaidu pārbaudei (`npm install
+--no-save`, noņemts pēc lietošanas), `npm run dev:web` palaists fonā, tas
+pats scenārijs (VO-1/VO-2/VO-3) sagatavots TIEŠI IndexedDB (tāpat kā
+Sesijas 22/26 konvencija), lapa pārlādēta, projekts atvērts caur reālu UI
+klikšķi. "Tāme" cilnē (noklusējuma aktīvā pēc bāzes iesaldēšanas)
+ekrānuzņēmums apstiprināja identisku ainu tam, ko UI jau rādīja kopš
+Sesijas 24 ("1b", "2", "3 (VO-2)", VO-1/VO-2/VO-3 ΔDaudz./ΔEUR kolonnas).
+Pēc tam reāls klikšķis uz "Eksportēt Excel" (nevis tiešs funkcijas
+izsaukums) -> lejupielādētais `.xlsx` fails pārlasīts ar `exceljs` -
+IDENTISKAS vērtības Solim 1 (tas pats "1b"/"2"/"3 (VO-2)" un VO-1/VO-2/VO-3
+kolonnu skaitļi). Konsolē NAV kļūdu (nedz `console.error`, nedz
+`pageerror`) nevienā solī. Pagaidu skripts un `playwright-core` noņemti pēc
+lietošanas, `git status` tīrs.
 
 **Definition of Done — pārbaudīts:**
 - ✅ Core: 143/143 testi zaļi (2 jauni šai funkcionalitātei).
 - ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
   praktiski nemainīgi — ~192KB galvenais/~958KB excel chunk).
-- ✅ Manuāli pārbaudīts ar reālu eksportētu `.xlsx` failu (pagaidu skripts,
-  izdzēsts pēc lietošanas) — displayCode/VO delta kolonnas precīzi sakrīt ar
-  jau apstiprināto `computeItemCodesAndHistory` semantiku.
-- ⚠️ NAV pārbaudīts pārlūkā ar Playwright (šī sesija mainīja tikai
-  `packages/core`, `packages/web` UI nemainījās — eksporta poga jau
-  izsauc to pašu `exportBoqToBuffer`, kas tagad vienkārši raksta vairāk
-  kolonnu).
+- ✅ Manuāli pārbaudīts ar reālu eksportētu `.xlsx` failu, GAN tiešā core
+  izsaukumā, GAN REĀLĀ pārlūkā (Playwright, klikšķis uz "Eksportēt Excel")
+  — displayCode/VO delta kolonnas precīzi sakrīt ar jau apstiprināto
+  `computeItemCodesAndHistory` semantiku abos ceļos, konsolē nav kļūdu.
 
 ### Favicon
 
