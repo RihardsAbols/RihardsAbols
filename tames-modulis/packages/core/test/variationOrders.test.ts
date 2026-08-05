@@ -62,6 +62,7 @@ function vo(overrides: Partial<VariationOrder> = {}): VariationOrder {
       { status: "proposed", date: "2026-01-01" },
       { status: "approved", date: "2026-01-02" },
     ],
+    precedents: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -227,6 +228,38 @@ describe("nextVariationOrderNumber / createVariationOrder", () => {
     expect(created.voidedReason).toBeNull();
     expect(created.changes).toEqual([]);
     expect(created.id).toBeTruthy();
+    expect(created.precedents).toEqual([]);
+  });
+
+  it("snapshots precedents from every existing VO's CURRENT status at creation time, regardless of that status", () => {
+    const first = vo({ id: "vo-1", number: "VO-1", status: "approved" });
+    const second = vo({ id: "vo-2", number: "VO-2", status: "rejected" });
+    const created = createVariationOrder([first, second], {
+      title: "Papildu darbi",
+      justification: "",
+      instructedBy: "Pasūtītājs",
+      date: "2026-02-01",
+    });
+    expect(created.precedents).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", statusAtCreation: "approved" },
+      { voId: "vo-2", voNumber: "VO-2", statusAtCreation: "rejected" },
+    ]);
+  });
+
+  it("precedents snapshot does NOT change if a precedent VO is later voided (vēsturiski precīzi, Sesija 30)", () => {
+    const first = vo({ id: "vo-1", number: "VO-1", status: "approved" });
+    const created = createVariationOrder([first], {
+      title: "Papildu darbi",
+      justification: "",
+      instructedBy: "Pasūtītājs",
+      date: "2026-02-01",
+    });
+    expect(created.precedents).toEqual([{ voId: "vo-1", voNumber: "VO-1", statusAtCreation: "approved" }]);
+
+    const afterVoid = voidVariationOrder([first, created], "vo-1", "Nepareizs daudzums");
+    const createdAfterVoid = afterVoid.find((v) => v.id === created.id)!;
+    expect(afterVoid.find((v) => v.id === "vo-1")!.status).toBe("voided");
+    expect(createdAfterVoid.precedents[0].statusAtCreation).toBe("approved");
   });
 });
 

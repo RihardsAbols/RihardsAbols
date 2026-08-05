@@ -242,6 +242,7 @@ describe("migrateToCurrent", () => {
           { status: "proposed", date: "2026-01-01" },
           { status: "approved", date: "2026-01-05" },
         ],
+        precedents: [],
       },
     ]);
   });
@@ -690,6 +691,138 @@ describe("migrateToCurrent", () => {
     const migrated = migrateToCurrent(v10);
     expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(migrated.baselineApprovedBy).toBe("Jānis Bērziņš");
+  });
+
+  it("reconstructs precedents from earlier VOs' statusHistory compared against this VO's createdAt when migrating v11 data", () => {
+    const v11 = {
+      schemaVersion: 11,
+      projectId: "proj-24",
+      projectName: "v11 bez precedents",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      baselineApprovedBy: "Jānis Bērziņš",
+      variationOrders: [
+        {
+          id: "vo-1",
+          number: "VO-1",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-01",
+          status: "approved",
+          statusDate: "2026-01-05",
+          voidedReason: null,
+          reserveDrawdown: 0,
+          changes: [],
+          statusHistory: [
+            { status: "proposed", date: "2026-01-01T00:00:00.000Z" },
+            { status: "approved", date: "2026-01-05T00:00:00.000Z" },
+          ],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-05T00:00:00.000Z",
+        },
+        // Izveidota PĒC VO-1 apstiprināšanas - precedentam jārāda "approved".
+        {
+          id: "vo-2",
+          number: "VO-2",
+          title: "Vēl papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-10",
+          status: "proposed",
+          statusDate: null,
+          voidedReason: null,
+          reserveDrawdown: 0,
+          changes: [],
+          statusHistory: [{ status: "proposed", date: "2026-01-10T00:00:00.000Z" }],
+          createdAt: "2026-01-10T00:00:00.000Z",
+          updatedAt: "2026-01-10T00:00:00.000Z",
+        },
+        // Izveidota PIRMS VO-1 apstiprināšanas (starp proposed un approved) -
+        // precedentam jārāda "proposed", NEVIS gala "approved" statusu.
+        {
+          id: "vo-3",
+          number: "VO-3",
+          title: "Vēl kāda VO",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-03",
+          status: "rejected",
+          statusDate: "2026-01-04",
+          voidedReason: null,
+          reserveDrawdown: 0,
+          changes: [],
+          statusHistory: [
+            { status: "proposed", date: "2026-01-03T00:00:00.000Z" },
+            { status: "rejected", date: "2026-01-04T00:00:00.000Z" },
+          ],
+          createdAt: "2026-01-03T00:00:00.000Z",
+          updatedAt: "2026-01-04T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v11);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0].precedents).toEqual([]);
+    expect(migrated.variationOrders[1].precedents).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", statusAtCreation: "approved" },
+    ]);
+    expect(migrated.variationOrders[2].precedents).toEqual([
+      { voId: "vo-1", voNumber: "VO-1", statusAtCreation: "proposed" },
+      { voId: "vo-2", voNumber: "VO-2", statusAtCreation: "proposed" },
+    ]);
+  });
+
+  it("preserves an already-present precedents array during v11->v12 migration", () => {
+    const existingPrecedents = [{ voId: "vo-1", voNumber: "VO-1", statusAtCreation: "approved" }];
+    const v11 = {
+      schemaVersion: 11,
+      projectId: "proj-25",
+      projectName: "v11 ar jau iestatītu precedents",
+      vatRate: 0.21,
+      overheadRate: 0.12,
+      profitRate: 0.05,
+      discountRate: 0,
+      contractor: { name: "", regNr: "", address: "" },
+      client: { name: "", regNr: "", address: "" },
+      preparedBy: "",
+      checkedBy: "",
+      sections: [],
+      baselineApprovedAt: "2025-12-01T00:00:00.000Z",
+      baselineApprovedBy: "Jānis Bērziņš",
+      variationOrders: [
+        {
+          id: "vo-2",
+          number: "VO-2",
+          title: "Papildu darbi",
+          justification: "",
+          instructedBy: "",
+          date: "2026-01-10",
+          status: "proposed",
+          statusDate: null,
+          voidedReason: null,
+          reserveDrawdown: 0,
+          changes: [],
+          statusHistory: [{ status: "proposed", date: "2026-01-10T00:00:00.000Z" }],
+          precedents: existingPrecedents,
+          createdAt: "2026-01-10T00:00:00.000Z",
+          updatedAt: "2026-01-10T00:00:00.000Z",
+        },
+      ],
+      executionRecords: [],
+    };
+    const migrated = migrateToCurrent(v11);
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(migrated.variationOrders[0].precedents).toEqual(existingPrecedents);
   });
 
   it("preserves an already-present vatRate instead of overwriting it during migration", () => {

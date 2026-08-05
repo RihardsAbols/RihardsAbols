@@ -470,14 +470,24 @@ const VO_STATUS_LABELS: Record<VariationOrder["status"], string> = {
   voided: "Anulēts",
 };
 
+/** "VO-1 (Apstiprināts), VO-2 (Noraidīts)" - skat. VariationOrder.precedents. Tukšam sarakstam (pirmā VO) atgriež "-". */
+function formatPrecedents(precedents: VariationOrder["precedents"]): string {
+  if (precedents.length === 0) {
+    return "-";
+  }
+  return precedents.map((p) => `${p.voNumber} (${VO_STATUS_LABELS[p.statusAtCreation]})`).join(", ");
+}
+
 // Two logical tables (VO reģistrs, mainīto pozīciju saraksts) are stacked in
 // the same worksheet and therefore share columns 1-9 despite having
 // different meanings per table (e.g. col. 1 is "Nr." (VO number) in the
 // register but "Sadaļa" in the diff table) - widths below are picked wide
 // enough for whichever table's content in that column is longer; a
 // too-narrow value clips text, a too-wide one is only extra whitespace, so
-// erring wide is the safe choice.
-const VARIATION_ORDERS_SHEET_COLUMN_WIDTHS = [20, 12, 40, 28, 36, 16, 22, 10, 20];
+// erring wide is the safe choice. Col. 8 is "Precedenti" in the register
+// (see writeVariationOrdersSheet) but "Izslēgts" (short "Jā"/"Nē") in the
+// diff table below it - width picked for the register's longer content.
+const VARIATION_ORDERS_SHEET_COLUMN_WIDTHS = [20, 12, 40, 28, 36, 16, 22, 40, 20];
 
 /**
  * Writes the "IZMAIŅAS" worksheet - a VO reģistrs (one row per Variation
@@ -519,6 +529,7 @@ function writeVariationOrdersSheet(
     "Pamatojums",
     "Instruēja",
     "Ietekme uz tiešajām izmaksām (EUR)",
+    "Izveidota, kad zināmas",
   ];
   registerHeaders.forEach((label, i) => {
     const cell = sheet.getCell(registerHeaderRow, i + 1);
@@ -541,6 +552,9 @@ function writeVariationOrdersSheet(
     const impactCell = sheet.getCell(r, 7);
     impactCell.value = computeVariationOrderDirectTotalImpact(baselineSections, state.variationOrders, vo.id);
     impactCell.numFmt = MONEY_FORMAT;
+    const precedentsCell = sheet.getCell(r, 8);
+    precedentsCell.value = formatPrecedents(vo.precedents);
+    precedentsCell.alignment = { wrapText: true, vertical: "top" };
   });
   row = firstVoRow + state.variationOrders.length + 1; // + viena tukša atdalītājrinda
 

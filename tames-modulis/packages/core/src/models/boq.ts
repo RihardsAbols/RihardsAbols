@@ -111,6 +111,11 @@ export interface BoqState {
   updatedAt: string;
 }
 
+// v12 pievienoja VariationOrder.precedents (vēsturisks momentuzņēmums -
+// kuras iepriekšējās VO un ar kādu statusu bija zināmas TIEŠI šīs VO
+// izveides brīdī, nemainās vēlākas precedenta VO anulēšanas gadījumā, skat.
+// models/variationOrder.ts un CLAUDE.md "VO precedentu redzamība (Sesija
+// 30)").
 // v11 pievienoja BoqState.baselineApprovedBy (kas apstiprināja bāzes
 // iesaldēšanu - OBLIGĀTS jaunām iesaldēšanām, skat. models/boq.ts un
 // CLAUDE.md "Bāzes apstiprinātājs (Sesija 29)").
@@ -140,7 +145,7 @@ export interface BoqState {
 // `unitPrice` with a darba alga/materiāli/mehānismi split and added
 // overheadRate/profitRate, matching the Līguma tāme format used by the
 // izpildes-akts-validacija skill (see storage/migrations).
-export const CURRENT_SCHEMA_VERSION = 11;
+export const CURRENT_SCHEMA_VERSION = 12;
 
 /** Latvijas standarta PVN likme. */
 export const DEFAULT_VAT_RATE = 0.21;

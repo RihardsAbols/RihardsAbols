@@ -32,6 +32,11 @@ const STATUS_LABELS: Record<VariationOrder["status"], string> = {
   voided: "Anulēts",
 };
 
+/** "VO-1 (Apstiprināts), VO-2 (Noraidīts)" - skat. VariationOrder.precedents (vēsturisks momentuzņēmums, Sesija 30). */
+function formatPrecedents(precedents: VariationOrder["precedents"]): string {
+  return precedents.map((p) => `${p.voNumber} (${STATUS_LABELS[p.statusAtCreation]})`).join(", ");
+}
+
 /** Sadaļas izvēlnes sentinel vērtība "+ Jauna sadaļa" opcijai - nekad nesakrīt ar īstu sadaļas/izmaiņas id (crypto.randomUUID()). */
 const NEW_SECTION_VALUE = "__new__";
 
@@ -309,6 +314,9 @@ export function VariationOrders({ state, onUpdate }: VariationOrdersProps) {
             <div className="vo-card-meta">
               {vo.date} · Instruēja: {vo.instructedBy || "-"}
             </div>
+            {vo.precedents.length > 0 && (
+              <div className="vo-card-meta">Izveidota, kad zināmas: {formatPrecedents(vo.precedents)}</div>
+            )}
             {vo.justification && <p className="vo-justification-text">{vo.justification}</p>}
             {vo.status === "voided" && vo.voidedReason && (
               <p className="vo-justification-text">Anulēšanas iemesls: {vo.voidedReason}</p>

@@ -112,6 +112,22 @@ const migrations: Record<number, Migration> = {
     ...data,
     baselineApprovedBy: typeof data.baselineApprovedBy === "string" ? data.baselineApprovedBy : null,
   }),
+  // v11 VO had no precedents (VO precedentu redzamība - Sesija 30, skat.
+  // CLAUDE.md) - kuras iepriekšējās VO (masīva secībā) ar kādu statusu bija
+  // zināmas TIEŠI šīs VO izveides brīdī, glabāts (nevis atvasināts), lai
+  // vēlāka precedenta VO anulēšana neizmainītu šo skatu. Rekonstruē LABĀKO
+  // IESPĒJAMO vēsturi no katras iepriekšējās VO statusHistory (Sesija 28),
+  // salīdzinot statusa maiņu datumus ar ŠĪS VO createdAt - tas pats "labākais
+  // iespējamais" princips kā v9->v10 migrācijai, un manto TO PAŠU zināmo
+  // ierobežojumu (ja precedenta VO approve+void cikls notika PIRMS v9->v10
+  // migrācijas, tās statusHistory pati jau bija nepilnīga, un šī
+  // rekonstrukcija to nevar labot).
+  11: (data) => ({
+    ...data,
+    variationOrders: Array.isArray(data.variationOrders)
+      ? migrateVariationOrdersV11ToV12(data.variationOrders as Record<string, unknown>[])
+      : data.variationOrders,
+  }),
 };
 
 function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string, unknown> {
@@ -146,6 +162,33 @@ function migrateVariationOrderV8ToV9(vo: Record<string, unknown>): Record<string
     ...vo,
     reserveDrawdown: typeof vo.reserveDrawdown === "number" ? vo.reserveDrawdown : 0,
   };
+}
+
+/** Šīs (iepriekšējās) VO statuss TIEŠI `atIso` brīdī, atvasināts no tās statusHistory (Sesija 28) - "proposed", ja vēsture tukša/nav sasniegts neviens ieraksts. */
+function statusAtDate(vo: Record<string, unknown>, atIso: string): unknown {
+  const history = Array.isArray(vo.statusHistory) ? (vo.statusHistory as Array<Record<string, unknown>>) : [];
+  let status: unknown = "proposed";
+  for (const entry of history) {
+    if (typeof entry.date === "string" && typeof atIso === "string" && entry.date <= atIso) {
+      status = entry.status;
+    }
+  }
+  return status;
+}
+
+function migrateVariationOrdersV11ToV12(vos: Record<string, unknown>[]): Record<string, unknown>[] {
+  return vos.map((vo, i) => {
+    if (Array.isArray(vo.precedents)) {
+      return vo;
+    }
+    const createdAt = typeof vo.createdAt === "string" ? vo.createdAt : "";
+    const precedents = vos.slice(0, i).map((earlier) => ({
+      voId: earlier.id,
+      voNumber: earlier.number,
+      statusAtCreation: statusAtDate(earlier, createdAt),
+    }));
+    return { ...vo, precedents };
+  });
 }
 
 function migrateVariationOrderV9ToV10(vo: Record<string, unknown>): Record<string, unknown> {

@@ -88,7 +88,13 @@ export interface CreateVariationOrderInput {
   date: string;
 }
 
-/** Izveido jaunu VO statusā "proposed", bez izmaiņām - izmaiņas pievieno atsevišķi. */
+/**
+ * Izveido jaunu VO statusā "proposed", bez izmaiņām - izmaiņas pievieno
+ * atsevišķi. `precedents` uzreiz ieņem VĒSTURISKU momentuzņēmumu no
+ * `existing` (VISAS jau eksistējošās VO, katra ar SAVU PAŠREIZĒJO statusu
+ * TIEŠI ŠAJĀ brīdī) - skat. models/variationOrder.ts VariationOrder.precedents
+ * pilnu semantiku (kāpēc glabāts, nevis atvasināts).
+ */
 export function createVariationOrder(existing: VariationOrder[], input: CreateVariationOrderInput): VariationOrder {
   const now = new Date().toISOString();
   return {
@@ -104,6 +110,7 @@ export function createVariationOrder(existing: VariationOrder[], input: CreateVa
     reserveDrawdown: 0,
     changes: [],
     statusHistory: [{ status: "proposed", date: now }],
+    precedents: existing.map((vo) => ({ voId: vo.id, voNumber: vo.number, statusAtCreation: vo.status })),
     createdAt: now,
     updatedAt: now,
   };
