@@ -1,6 +1,7 @@
 import { computeItemCodesAndHistory, deriveCurrentState, summarizeBoq } from "@tames-modulis/core";
 import type { BoqItem, BoqSection, BoqState, CompanyDetails, StorageAdapter } from "@tames-modulis/core";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { AuditLog } from "./AuditLog.js";
 import { ExecutionRecords } from "./ExecutionRecords.js";
 import { ItemsTable } from "./ItemsTable.js";
 import { VariationOrders } from "./VariationOrders.js";
@@ -55,12 +56,14 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"tame" | "izmainas" | "izpilde">("tame");
+  const [activeTab, setActiveTab] = useState<"tame" | "izmainas" | "izpilde" | "vesture">("tame");
   // Ephemeral (nesaglabāts) eksporta izvēle, ne pastāvīga projekta īpašība -
   // Pasūtītāja rezerve ir iekšēja darbuzņēmēja uzskaite, tāpēc katrā
   // eksportā jāizvēlas atsevišķi, vai to iekļaut, nevis atceras starp
   // sesijām. Noklusējums izslēgts (skat. CLAUDE.md "Pasūtītāja rezerve").
   const [includeReserveRegister, setIncludeReserveRegister] = useState(false);
+  const [approvingBaseline, setApprovingBaseline] = useState(false);
+  const [baselineApproverName, setBaselineApproverName] = useState("");
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -68,6 +71,8 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
     setState(null);
     setStatus(null);
     setActiveTab("tame");
+    setApprovingBaseline(false);
+    setBaselineApproverName("");
     adapter.load(projectId).then((loaded) => {
       if (!cancelled) setState(loaded);
     });
@@ -161,16 +166,17 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
     }
   };
 
-  const handleApproveBaseline = () => {
-    if (
-      !confirm(
-        "Apstiprināt bāzes tāmi? Pēc apstiprināšanas sadaļas un pozīcijas vairs nebūs tieši rediģējamas - " +
-          'turpmākās izmaiņas jāveic caur "Izmaiņas (VO)" cilni. Nospied "Saglabāt", lai izmaiņas saglabātu.',
-      )
-    ) {
-      return;
-    }
-    update((s) => ({ ...s, baselineApprovedAt: new Date().toISOString() }));
+  // Inline forma ar OBLIGĀTU apstiprinātāja lauku (skat. models/boq.ts
+  // BoqState.baselineApprovedBy) aizstāj iepriekšējo confirm() dialogu -
+  // TAS PATS paraugs, ko jau lieto VO/akta anulēšana ("vo-void-form"/
+  // "execution-void-form", skat. VariationOrders.tsx/ExecutionRecords.tsx),
+  // konsekventi ar to, ka lauka vērtības ievadei šis projekts nelieto
+  // window.prompt() - skat. CLAUDE.md "Bāzes apstiprinātājs (Sesija 29)".
+  const handleConfirmApproveBaseline = () => {
+    if (!baselineApproverName.trim()) return;
+    update((s) => ({ ...s, baselineApprovedAt: new Date().toISOString(), baselineApprovedBy: baselineApproverName.trim() }));
+    setApprovingBaseline(false);
+    setBaselineApproverName("");
     setStatus('Bāzes tāme iesaldēta. Nospied "Saglabāt", lai saglabātu izmaiņas.');
   };
 
@@ -277,14 +283,42 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
             hidden
             onChange={(e) => void handleImportFileChange(e)}
           />
-          {!baselineLocked && <button onClick={handleApproveBaseline}>Apstiprināt bāzes tāmi</button>}
+          {!baselineLocked && !approvingBaseline && (
+            <button onClick={() => setApprovingBaseline(true)}>Apstiprināt bāzes tāmi</button>
+          )}
         </div>
       </div>
       {status && <p className="status">{status}</p>}
+      {approvingBaseline && (
+        <div className="baseline-approve-form">
+          <p className="hint">
+            Apstiprināt bāzes tāmi? Pēc apstiprināšanas sadaļas un pozīcijas vairs nebūs tieši rediģējamas - turpmākās
+            izmaiņas jāveic caur "Izmaiņas (VO)" cilni.
+          </p>
+          <label>
+            Apstiprinātājs
+            <input value={baselineApproverName} onChange={(e) => setBaselineApproverName(e.target.value)} />
+          </label>
+          <div className="baseline-approve-form-actions">
+            <button onClick={handleConfirmApproveBaseline} disabled={!baselineApproverName.trim()}>
+              Apstiprināt bāzes tāmi
+            </button>
+            <button
+              onClick={() => {
+                setApprovingBaseline(false);
+                setBaselineApproverName("");
+              }}
+            >
+              Atcelt
+            </button>
+          </div>
+        </div>
+      )}
       {baselineLocked && (
         <p className="baseline-banner">
-          Bāzes tāme iesaldēta {new Date(state.baselineApprovedAt as string).toLocaleDateString("lv-LV")}. Sadaļas/pozīcijas
-          vairs nav tieši rediģējamas - izmaiņas veic "Izmaiņas (VO)" cilnē.
+          Bāzes tāme iesaldēta {new Date(state.baselineApprovedAt as string).toLocaleDateString("lv-LV")}. Apstiprināja:{" "}
+          {state.baselineApprovedBy ?? "-"}. Sadaļas/pozīcijas vairs nav tieši rediģējamas - izmaiņas veic "Izmaiņas
+          (VO)" cilnē.
         </p>
       )}
 
@@ -385,6 +419,9 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
           <button className={activeTab === "izpilde" ? "tab-active" : ""} onClick={() => setActiveTab("izpilde")}>
             Izpildes akti
           </button>
+          <button className={activeTab === "vesture" ? "tab-active" : ""} onClick={() => setActiveTab("vesture")}>
+            Vēsture
+          </button>
         </div>
       )}
 
@@ -454,6 +491,7 @@ export function ProjectEditor({ adapter, projectId, onSaved }: ProjectEditorProp
 
       {baselineLocked && activeTab === "izmainas" && <VariationOrders state={state} onUpdate={update} />}
       {baselineLocked && activeTab === "izpilde" && <ExecutionRecords state={state} onUpdate={update} />}
+      {baselineLocked && activeTab === "vesture" && <AuditLog state={state} />}
     </div>
   );
 }

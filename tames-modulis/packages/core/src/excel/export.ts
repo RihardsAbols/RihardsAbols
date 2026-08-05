@@ -1,4 +1,6 @@
 import ExcelJS from "exceljs";
+import { computeAuditLog } from "../audit/auditLog.js";
+import type { AuditEvent, AuditEventType } from "../audit/auditLog.js";
 import { calculateItemCosts, summarizeBoq } from "../calculations/boq.js";
 import { computeExecutedToDate, computeExecutionOverview, computeExecutionRecordValue, computeRemainingQuantity } from "../executionRecords/executionRecords.js";
 import type { BoqItem, BoqSection, BoqState } from "../models/boq.js";
@@ -776,6 +778,67 @@ function writeExecutionRecordsSheet(workbook: ExcelJS.Workbook, state: BoqState,
   }
 }
 
+// Cilvēklasāms LV teksts katram AuditEventType - lieto gan UI (AuditLog.tsx),
+// gan šī Excel lapa, lai abi rādītu identisku formulējumu (skat. CLAUDE.md
+// "Audita žurnāls (Sesija 28)").
+const AUDIT_EVENT_LABELS: Record<AuditEventType, string> = {
+  baseline_approved: "Bāzes tāme iesaldēta",
+  vo_proposed: "VO ierosināta",
+  vo_approved: "VO apstiprināta",
+  vo_rejected: "VO noraidīta",
+  vo_voided: "VO anulēta",
+  execution_record_created: "Izpildes akts izveidots",
+  execution_record_voided: "Izpildes akts anulēts",
+};
+
+const AUDIT_LOG_SHEET_COLUMN_WIDTHS = [14, 26, 16, 20, 40];
+
+/**
+ * Writes the "VĒSTURE" worksheet - VIENA hronoloģiska tabula, kas apvieno
+ * bāzes iesaldēšanu, katras VO statusa maiņu, un katra izpildes akta
+ * izveidi/anulēšanu (skat. computeAuditLog un CLAUDE.md "Audita žurnāls
+ * (Sesija 28)"). Only called when computeAuditLog returns at least one event
+ * (see exportBoqToWorkbook) - praksē vienmēr, kad ir iesaldēta bāze.
+ */
+function writeAuditLogSheet(workbook: ExcelJS.Workbook, state: BoqState, events: AuditEvent[]): void {
+  const sheet = workbook.addWorksheet("VĒSTURE");
+  AUDIT_LOG_SHEET_COLUMN_WIDTHS.forEach((width, i) => {
+    sheet.getColumn(i + 1).width = width;
+  });
+
+  const headerLines = writeProjectHeaderBlock(sheet, state, 2, 7);
+  let row = headerLines + 2; // viena tukša atdalītājrinda
+
+  sheet.getCell(row, 1).value = "Audita žurnāls";
+  sheet.getCell(row, 1).font = { ...HEADER_FONT, size: 13 };
+  row += 2;
+
+  const tableHeaderRow = row;
+  ["Datums", "Notikums", "Atsauce", "Persona", "Piezīme"].forEach((label, i) => {
+    const cell = sheet.getCell(tableHeaderRow, i + 1);
+    cell.value = label;
+    cell.font = HEADER_FONT;
+  });
+  row += 1;
+
+  const firstEventRow = row;
+  events.forEach((event, i) => {
+    const r = firstEventRow + i;
+    sheet.getCell(r, 1).value = event.date;
+    sheet.getCell(r, 2).value = AUDIT_EVENT_LABELS[event.type];
+    sheet.getCell(r, 3).value = event.refLabel;
+    sheet.getCell(r, 4).value = event.actor ?? "-";
+    sheet.getCell(r, 5).value = event.detail ?? "-";
+  });
+
+  const lastRow = firstEventRow + events.length - 1;
+  for (const sheetRow of sheet.getRows(1, lastRow) ?? []) {
+    sheetRow?.eachCell({ includeEmpty: false }, (cell) => {
+      cell.font = { ...cell.font, name: "Arial" };
+    });
+  }
+}
+
 export interface ExportOptions {
   /**
    * Whether to include the "Pasūtītāja rezerve" register/summary table in
@@ -821,7 +884,28 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
   summary.getCell(vatRateRow, 2).value = state.vatRate;
   summary.getCell(vatRateRow, 2).numFmt = PERCENT_FORMAT;
 
-  const tableHeaderRow = vatRateRow + 2; // one blank separator row
+  // Rādīts TIKAI KOPSAVILKUMS lapā (nevis katrā sadaļu/IZMAIŅAS/IZPILDES
+  // AKTI/VĒSTURE lapā, kur writeProjectHeaderBlock arī tiek izsaukts) -
+  // simetriski ar to, kā pārējie "pieņēmumu" lauki (Atlaides/Virsizdevumu/
+  // Peļņas/PVN likme) jau ir TIKAI šeit, nevis katrā lapā. Raw ISO datums
+  // (ne toLocaleDateString), konsekventi ar to, kā šis fails jau raksta
+  // citus datumus (VO/akta ieraksti "IZMAIŅAS"/"IZPILDES AKTI"/"VĒSTURE"
+  // lapās) - skat. CLAUDE.md "Bāzes apstiprinātājs (Sesija 29)".
+  // A frozen baseline (state.baselineApprovedAt !== null) means state.sections
+  // IS the bāze (never mutated after freeze, see models/boq.ts) - declared
+  // here (not further below, where it used to be) so both this block and the
+  // per-sadaļa rendering below can use the same flag.
+  const hasBaseline = state.baselineApprovedAt !== null;
+  if (hasBaseline) {
+    const baselineDateRow = vatRateRow + 1;
+    const baselineByRow = vatRateRow + 2;
+    summary.getCell(baselineDateRow, 1).value = "Bāzes tāme apstiprināta:";
+    summary.getCell(baselineDateRow, 2).value = state.baselineApprovedAt as string;
+    summary.getCell(baselineByRow, 1).value = "Apstiprināja:";
+    summary.getCell(baselineByRow, 2).value = state.baselineApprovedBy ?? "-";
+  }
+
+  const tableHeaderRow = vatRateRow + (hasBaseline ? 4 : 2); // rate rows + optional baseline rows + one blank separator row
   [
     "Sadaļa",
     "Tiešās izmaksas",
@@ -836,14 +920,13 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
     cell.font = HEADER_FONT;
   });
 
-  const usedSheetNames = new Set<string>(["KOPSAVILKUMS", "IZMAIŅAS", "IZPILDES AKTI"]);
-  // A frozen baseline (state.baselineApprovedAt !== null) means state.sections
-  // IS the bāze (never mutated after freeze, see models/boq.ts) - the sheets
-  // below render the CURRENT scope (bāze + apstiprinātās VO), matching real
-  // FIDIC practice where the working tāme reflects approved changes while a
-  // separate register documents them (see writeVariationOrdersSheet). Without
-  // a frozen baseline, state.sections is just the (draft) tāme as always.
-  const hasBaseline = state.baselineApprovedAt !== null;
+  const usedSheetNames = new Set<string>(["KOPSAVILKUMS", "IZMAIŅAS", "IZPILDES AKTI", "VĒSTURE"]);
+  // The sheets below render the CURRENT scope (bāze + apstiprinātās VO),
+  // matching real FIDIC practice where the working tāme reflects approved
+  // changes while a separate register documents them (see
+  // writeVariationOrdersSheet). Without a frozen baseline, state.sections is
+  // just the (draft) tāme as always. (hasBaseline itself is declared above,
+  // next to the KOPSAVILKUMS rates block, where it's also needed.)
   const approvedVariationOrders = state.variationOrders.filter((vo) => vo.status === "approved");
   const currentSections = hasBaseline ? deriveCurrentSections(state.sections, approvedVariationOrders) : state.sections;
   const exportState: BoqState = hasBaseline ? { ...state, sections: currentSections } : state;
@@ -965,6 +1048,11 @@ export function exportBoqToWorkbook(state: BoqState, options: ExportOptions = {}
 
   if (state.executionRecords.length > 0) {
     writeExecutionRecordsSheet(workbook, state, currentSections);
+  }
+
+  const auditEvents = computeAuditLog(state);
+  if (auditEvents.length > 0) {
+    writeAuditLogSheet(workbook, state, auditEvents);
   }
 
   return workbook;

@@ -14,15 +14,19 @@ Npm workspace ar divām pakotnēm:
   nosaukums/reģ.nr./adrese) un `preparedBy`/`checkedBy` ir projekta līmenī;
   `BoqSection.estimateNumber` ir manuāli ievadāma tāmes numerācija sadaļas
   līmenī — skat. "Projekta rekvizīti un tāmes numerācija" zemāk.
-  `BoqState.baselineApprovedAt`/`variationOrders`/`executionRecords` un
-  `BoqItem.excluded` — tāmes izmaiņu (Variation Order) vadība un izpildes
-  aktu uzskaite, skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  `BoqState.baselineApprovedAt`/`baselineApprovedBy`/`variationOrders`/
+  `executionRecords` un `BoqItem.excluded` — tāmes izmaiņu (Variation
+  Order) vadība un izpildes aktu uzskaite, skat. "Tāmes izmaiņu (Variation
+  Order) vadība" zemāk un "Bāzes apstiprinātājs (Sesija 29)".
 - `src/models/variationOrder.ts` — `VariationOrder`/`VariationOrderChange`
   tipi, ieskaitot `VariationOrderChange.newSection` (VO var izveidot
-  pavisam jaunu sadaļu, ne tikai pozīciju esošā) un
+  pavisam jaunu sadaļu, ne tikai pozīciju esošā),
   `VariationOrder.reserveDrawdown` (EUR summa, ko VO izmanto no atvasinātās
-  "Pasūtītāja rezerves", skat. "Pasūtītāja rezerve (Sesija 26)" zemāk) —
-  skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  "Pasūtītāja rezerves", skat. "Pasūtītāja rezerve (Sesija 26)" zemāk), un
+  `VariationOrder.statusHistory` (pilna statusa maiņu vēsture, PAPILDUS
+  `statusDate`, kas paliek tikai "pēdējās maiņas datums" — skat. "Audita
+  žurnāls (Sesija 28)" zemāk) — skat. "Tāmes izmaiņu (Variation Order)
+  vadība" zemāk.
 - `src/models/executionRecord.ts` — `ExecutionRecord`/`ExecutionRecordEntry`
   tipi (izpildes akts par vienu atskaites periodu) — skat. "Tāmes izmaiņu
   (Variation Order) vadība" zemāk.
@@ -43,6 +47,9 @@ Npm workspace ar divām pakotnēm:
   `voidExecutionRecord` (anulē aktu, skat. "Izpildes aktu/VO anulēšana
   (Sesija 23)" zemāk) — skat. "Tāmes izmaiņu (Variation Order) vadība"
   zemāk.
+- `src/audit/auditLog.ts` — `computeAuditLog` (apvieno bāzes iesaldēšanu,
+  katras VO statusa maiņu, un katra izpildes akta izveidi/anulēšanu VIENĀ
+  hronoloģiskā sarakstā), skat. "Audita žurnāls (Sesija 28)" zemāk.
 - `src/storage/StorageAdapter.ts` — glabāšanas saskarne
   (`save`/`load`/`list`/`delete`), lai glabāšanas mehānismu varētu nomainīt
   (fails <-> IndexedDB) nemainot pārējo kodu. `delete` ir idempotents —
@@ -59,7 +66,7 @@ Npm workspace ar divām pakotnēm:
   `updatedAt`, saglabā — met `ProjectNotFoundError`, ja projekta nav), un
   `deleteProject`. Universāls — strādā ar jebkuru `StorageAdapter`.
 - `src/storage/migrations/index.ts` — shēmas versiju migrāciju ķēde.
-  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8`, `migrateToCurrent`
+  Pašreiz `v1 -> v2 -> v3 -> v4 -> v5 -> v6 -> v7 -> v8 -> v9 -> v10 -> v11`, `migrateToCurrent`
   atbalsta pakāpenisku migrāciju pievienošanu arī turpmāk.
 - `src/calculations/boq.ts` — aprēķinu kodols: pozīcijas izmaksas
   (`calculateItemCosts`), sadaļas tiešās izmaksas
@@ -188,8 +195,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   `exportBoqToBuffer`/`importBoqFromBuffer` ar dinamisku
   `import("@tames-modulis/core/excel")` klikšķa brīdī, nevis statiski augšā
   failā — skat. "Bundle izmērs / code-splitting" zemāk. "Apstiprināt bāzes
-  tāmi" poga un "Tāme"/"Izmaiņas (VO)"/"Izpildes akti" cilnes pēc
-  iesaldēšanas — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+  tāmi" poga un "Tāme"/"Izmaiņas (VO)"/"Izpildes akti"/"Vēsture" cilnes pēc
+  iesaldēšanas — skat. "Tāmes izmaiņu (Variation Order) vadība" un "Audita
+  žurnāls (Sesija 28)" zemāk.
 - `src/components/VariationOrders.tsx` — "Izmaiņu" cilnes saturs (VO
   izveide/apstiprināšana/noraidīšana, izmaiņu pievienošana — ieskaitot
   jaunas sadaļas izveidi, atlikuma rādīšana pirms izmaiņas pievienošanas,
@@ -199,6 +207,9 @@ visus importus modulī, pat ja rezultāts tiek tree-shaken. Tāpēc:
   (jauna izpildes akta ievade pa sadaļām ar izpildīts/atlikums kolonnām,
   aktu vēsture, izpildes akta Excel imports ar priekšskata/sasaistes soli)
   — skat. "Tāmes izmaiņu (Variation Order) vadība" zemāk.
+- `src/components/AuditLog.tsx` — "Vēsture" cilnes saturs (viena
+  hronoloģiska tabula, `computeAuditLog` rezultāts, nav virtualizēta —
+  skat. "Audita žurnāls (Sesija 28)" zemāk).
 - `src/components/ExecutionEntryTable.tsx` — virtualizēta pozīciju tabula
   izpildes akta ievadei (tā pati tehnika kā `ItemsTable.tsx`, skat.
   "Pozīciju tabulas virtualizācija" un "Tāmes izmaiņu (Variation Order)
@@ -713,7 +724,10 @@ lietotājs nospiež "Apstiprināt bāzes tāmi" (`ProjectEditor.tsx`), datums
 tiek iestatīts un **`sections` no tā brīža ir bāze — pastāvīga, nekad vairs
 tieši nerediģēta atsauce**. Nav atsevišķa "baseline snapshot" lauka —
 `sections` PATS IR bāze pēc iesaldēšanas, tāpēc nav divu paralēlu kopiju,
-kas varētu izklīst.
+kas varētu izklīst. (Kopš Sesijas 29 klikšķis uz "Apstiprināt bāzes tāmi"
+atver inline formu ar OBLIGĀTU apstiprinātāja lauku, kas iestata arī
+`BoqState.baselineApprovedBy` — skat. "Bāzes apstiprinātājs (Sesija 29)"
+zemāk.)
 
 **"Pašreizējais" stāvoklis vienmēr ATVASINĀTS, nekad glabāts.**
 `deriveCurrentSections(baseline, variationOrders)`
@@ -1658,6 +1672,177 @@ PIRMS apstiprināšanas (nevis tikai pēc). Konsolē nav kļūdu. Zemāk esošā
   `packages/web`, kur šim projektam nav automatizētu komponenšu testu,
   tikai manuāla Playwright pārbaude, tāpat kā jebkurai citai UI izmaiņai
   šajā projektā).
+
+### Audita žurnāls (Sesija 28)
+
+Lietotājs pieprasīja izpēti (ne uzreiz ieviešanu): vai sistēmā ir
+pietiekama audita/vēstures izsekojamība, lai lietotājs CAUR SISTĒMU (nevis
+minot vai skatoties Git vēsturē) varētu noteikt bāzes/VO/izpildes aktu
+notikumu pilnu ainu autoritatīvam FIDIC inženierim. Izpēte (skat.
+PROGRESS.md Sesija 28 pilnu jautājumu sarakstu) atklāja: informācija bija
+IZKAISĪTA pa 4 vietām (bāzes iesaldēšanas baneris, VO karšu saraksts,
+izpildes aktu vēstures tabula, divas atsevišķas Excel lapas) bez viena
+hronoloģiska skata. Lietotājs apstiprināja: ieviest vienotu audita žurnālu
+TAGAD, pārējos atklātos trūkumus (bāzes apstiprinātājs, izpildes akta
+momentuzņēmums, VO precedentu redzamība — skat. "Nākamās sesijas" zemāk)
+risināt pakāpeniski turpmākās sesijās.
+
+**Papildu, iepriekš nedokumentēts defekts atklāts izpētes gaitā, kas tieši
+ietekmēja šo sesiju:** `VariationOrder.statusDate` bija VIENS lauks, ko
+pārraksta gan apstiprinot/noraidot (`VariationOrders.tsx` `handleSetStatus`),
+gan VĒLĀK anulējot (`voidVariationOrder`) — VO, kas tika apstiprināta un
+VĒLĀK anulēta, PĒC anulēšanas glabāja TIKAI anulēšanas datumu;
+apstiprināšanas datums bija NEATGRIEZENISKI pazudis no datiem, ne tikai
+nerādīts kaut kur. Audita žurnāls, kas balstītos TIKAI uz šo lauku,
+nevarētu korekti rādīt "apstiprināta X, anulēta Y" — tiešs pretstats
+sesijas mērķim. Tāpēc šī sesija vispirms labo šo datu zudumu.
+
+**Datu modelis (`schemaVersion` `9 -> 10`):** `VariationOrder.statusHistory:
+VariationOrderStatusEvent[]` (`{ status, date }`), PAPILDUS jau esošajam
+`statusDate` (kas paliek nemainīgs — "pēdējās maiņas datums", esošais kods,
+kas to lieto, nav skarts). `createVariationOrder`
+(`variationOrders/deriveCurrentState.ts`) inicializē ar
+`[{ status: "proposed", date: now }]`; `handleSetStatus`
+(`VariationOrders.tsx`) un `voidVariationOrder` katrs PIEVIENO jaunu
+ierakstu (nevis pārraksta). **Migrācija (`v9 -> v10`):** katrai VO bez
+`statusHistory` rekonstruē LABĀKO IESPĒJAMO vēsturi no `vo.date`/
+`vo.statusDate` (proposed pie `vo.date`, un, ja `statusDate` iestatīts,
+papildus pašreizējais status pie tā) — pareizi VO, kas nekad netika
+anulēta pēc apstiprināšanas/noraidīšanas; VO, kur apstiprināšana+anulēšana
+notika PIRMS šīs migrācijas, starpposma apstiprināšanas datums PALIEK
+PAZUDIS (jau esošs datu zudums no pirms šī labojuma, migrācija to nevar
+atgūt, tikai novērš turpmāku zudumu — dokumentēts migrācijas komentārā).
+
+**Core** (`src/audit/auditLog.ts`, jauns fails, eksportēts arī no
+`src/index.ts`): `computeAuditLog(state)` — tīra funkcija, apvieno VISUS
+notikumus VIENĀ hronoloģiskā (jaunākais pirmais) sarakstā:
+- Bāzes iesaldēšana (`state.baselineApprovedAt`, ja iestatīts) — VIENS
+  notikums, `actor: null` (bāzei nav sava apstiprinātāja lauka, skat.
+  "Nākamās sesijas" zemāk).
+- Katrai VO, VIENS notikums PER `statusHistory` ieraksts (`vo_proposed`/
+  `vo_approved`/`vo_rejected`/`vo_voided`) — `actor: vo.instructedBy`,
+  `detail: vo.justification` (proposed/approved/rejected) vai
+  `vo.voidedReason` (voided).
+- Katram izpildes aktam, `execution_record_created`
+  (`date: record.date` — akta PAŠA (biznesa) datums, nevis sistēmas
+  `createdAt`, konsekventi ar to, ka izpildes akta datums FIDIC praksē ir
+  pats akts, ne tā digitalizēšanas brīdis) un, ja anulēts, papildus
+  `execution_record_voided` (`date: record.voidedAt`).
+
+**UI:** ceturtā cilne "Vēsture" (`AuditLog.tsx`, jauns komponents) blakus
+"Tāme"/"Izmaiņas (VO)"/"Izpildes akti", rādās TIKAI pēc bāzes iesaldēšanas
+(tas pats priekšnosacījums kā pārējām). Vienkārša tabula (Datums/Notikums/
+Atsauce/Persona/Piezīme) — NAV virtualizēta, jo audita notikumu skaits ir
+mazuma kārtā desmitiem/simtos, nevis tūkstošos kā pozīciju tabulām (skat.
+"Pozīciju tabulas virtualizācija" augšā, kāpēc TĀ tabula to vajadzēja).
+
+**Excel eksports:** jauna "VĒSTURE" darblapa (`writeAuditLogSheet`,
+`excel/export.ts`), TAS PATS paraugs kā "IZMAIŅAS"/"IZPILDES AKTI" lapām
+(galvenes bloks + viena tabula), pievienota AIZ "IZPILDES AKTI" lapas.
+Renderēta TIKAI, ja `computeAuditLog` atgriež vismaz 1 notikumu.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma no nulles,
+ieskaitot lapas pārlādi persistences pārbaudei):** projekts ar 1 sadaļu/
+pozīciju, bāze iesaldēta, VO izveidota -> apstiprināta -> ANULĒTA (lai
+pārbaudītu `statusHistory` visus trīs ierakstus), izpildes akts izveidots
+-> ANULĒTS. "Vēsture" cilne rādīja visus 6 notikumus pareizā hronoloģiskā
+secībā ar pareiziem laukiem (piem. VO anulēšanas notikumam `actor:
+"Pasūtītājs"` no `instructedBy`, `detail`: anulēšanas iemesls — VO
+apstiprināšanas notikumam atsevišķi saglabāts savs datums, NAV pazudis).
+PĒC LAPAS PĀRLĀDES viss saglabājās identiski (IndexedDB round-trip caur
+jauno v10 shēmu). Eksportētā `.xlsx` faila "VĒSTURE" lapa (pārbaudīta ar
+`exceljs`) satur IDENTISKus datus tiem pašiem, ko UI rādīja. Konsolē nav
+kļūdu nevienā solī.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 154/154 testi zaļi (146 + 8 jauni: 6 `computeAuditLog` testi,
+  2 jauni `excel.test.ts` testi VĒSTURE lapai; migrācijas v9->v10 testi
+  `storage.test.ts` — reconstrukcija ar/bez statusDate, jau-klātesošas
+  statusHistory saglabāšana).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi, ~195KB galvenais/~958KB excel chunk).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna plūsma (bāze -> VO
+  izveide/apstiprināšana/anulēšana -> akts izveide/anulēšana -> "Vēsture"
+  cilne -> Excel eksports -> lapas pārlāde), konsolē nav kļūdu.
+
+**Nākamās sesijas (lietotāja apstiprināts ceļvedis, katra ar savu
+`AskUserQuestion` apstiprinājumu PIRMS ieviešanas):**
+- ~~Bāzes apstiprinātājs~~ — **ieviests Sesijā 29**, skat. zemāk.
+- Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
+  brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
+  pašreizējo) atlikumu.
+- VO precedentu redzamība — eksplicīts teksts "Izveidota, kad spēkā: VO-1,
+  VO-2" katrai VO kartei/Excel reģistra rindai.
+
+### Bāzes apstiprinātājs (Sesija 29)
+
+Pirmais no trim Sesijas 28 "Nākamās sesijas" kandidātiem (skat. augšā).
+Lietotājs apstiprināja (`AskUserQuestion`, 2 jautājumi PIRMS ieviešanas):
+lauks **OBLIGĀTS** (bāzi nevar iesaldēt, kamēr apstiprinātāja vārds nav
+ievadīts) un **inline forma pēc klikšķa** (TAS PATS paraugs, ko jau lieto
+VO/akta anulēšana — "vo-void-form"/"execution-void-form" — nevis
+persistents lauks pirms klikšķa, kā VO izveides "Instruēja").
+
+**Datu modelis (`schemaVersion` `10 -> 11`):** `BoqState.baselineApprovedBy:
+string | null` — `null` TIKAI projektiem, kas iesaldēti PIRMS šī lauka
+pievienošanas (migrācija to nevar atgūt). Jaunām iesaldēšanām UI to
+nepieļauj (skat. zemāk).
+
+**UI** (`ProjectEditor.tsx`): klikšķis uz "Apstiprināt bāzes tāmi" vairs
+NEIZSAUC `confirm()` dialogu ar tiešu iesaldēšanu — tā vietā atver
+`.baseline-approve-form` (dzeltens fons, tāpat kā `.baseline-banner`,
+NEVIS `.vo-void-form` sarkanais fons, jo šī nav destruktīva/anulēšanas
+darbība) ar obligātu "Apstiprinātājs" lauku + "Apstiprināt bāzes tāmi"
+pogu (atspējota, kamēr lauks tukšs, tāpat kā VO/akta anulēšanas
+"Apstiprināt anulēšanu" pogas) + "Atcelt". Sadaļas/pozīcijas paliek
+rediģējamas, kamēr forma atvērta, bet vēl nav apstiprināta (`baselineLocked`
+paliek `false`, kamēr `baselineApprovedAt` nav iestatīts). Bāzes iesaldēšanas
+baneris tagad rāda arī "Apstiprināja: {vārds}" (vai "-" migrētiem vecajiem
+projektiem bez šī lauka).
+
+**Audita žurnāls** (`src/audit/auditLog.ts`, Sesija 28): `baseline_approved`
+notikuma `actor` tagad ir `state.baselineApprovedBy` (iepriekš vienmēr
+`null`).
+
+**Excel eksports** (`excel/export.ts`): divas jaunas rindas TIKAI
+KOPSAVILKUMS lapā (nevis `writeProjectHeaderBlock`, ko izsauc katra lapa —
+apzināta izvēle, lai nešķeltu esošo rindu izkārtojumu visās sadaļu/IZMAIŅAS/
+IZPILDES AKTI/VĒSTURE lapās; simetriski ar to, kā pārējie "pieņēmumu" lauki
+— Atlaides/Virsizdevumu/Peļņas/PVN likme — arī ir TIKAI KOPSAVILKUMS, nevis
+katrā lapā), "Bāzes tāme apstiprināta:"/"Apstiprināja:" TŪLĪT AIZ PVN
+likmes rindas, TIKAI kad `baselineApprovedAt !== null` — pārējās lapas
+(sadaļu, IZMAIŅAS, IZPILDES AKTI, VĒSTURE) NAV skartas. Raw ISO datums
+(nevis `toLocaleDateString`), konsekventi ar to, kā šis fails jau raksta
+citus datumus VO/akta/audita ierakstos.
+
+**Manuāli pārbaudīts (Playwright, reāls Chromium, pilna plūsma, ieskaitot
+lapas pārlādi):** klikšķis uz "Apstiprināt bāzes tāmi" atvēra formu, BET
+pozīcijas palika rediģējamas un bāze NETIKA iesaldēta; "Apstiprināt bāzes
+tāmi" poga formā bija atspējota, kamēr lauks tukšs, un kļuva aktīva pēc
+ievades; pēc apstiprināšanas baneris rādīja "Apstiprināja: Jānis Bērziņš";
+"Vēsture" cilnē `baseline_approved` rinda rādīja to pašu vārdu Persona
+kolonnā. Pēc lapas pārlādes baneris saglabājās identisks. Eksportētā
+`.xlsx` faila KOPSAVILKUMS lapā (pārbaudīta ar `exceljs`) rindas 13-14
+saturēja precīzi "Bāzes tāme apstiprināta:"/ISO datumu un "Apstiprināja:"/
+"Jānis Bērziņš". Konsolē nav kļūdu nevienā solī.
+
+**Definition of Done — pārbaudīts:**
+- ✅ Core: 160/160 testi zaļi (154 + 6 jauni: 2 `computeAuditLog` actor
+  testi, 2 Excel KOPSAVILKUMS testi, 2 migrācijas v10->v11 testi).
+- ✅ Typecheck tīrs abās pakotnēs, `vite build` veiksmīgs (bundle izmēri
+  praktiski nemainīgi).
+- ✅ Manuāli pārbaudīts ar Playwright — pilna plūsma (forma neieslaidz
+  bāzi pirms apstiprināšanas, obligātā lauka validācija, baneris/Vēsture
+  cilne/Excel rāda apstiprinātāju, persistence pēc lapas pārlādes),
+  konsolē nav kļūdu.
+
+**Nākamās sesijas (atlikušie divi Sesijas 28 kandidāti, katra ar savu
+`AskUserQuestion` apstiprinājumu PIRMS ieviešanas):**
+- Izpildes akta momentuzņēmums — kuras VO bija apstiprinātas akta izveides
+  brīdī, lai vēstures tabulā/Excel varētu rādīt VĒSTURISKO (nevis tikai
+  pašreizējo) atlikumu.
+- VO precedentu redzamība — eksplicīts teksts "Izveidota, kad spēkā: VO-1,
+  VO-2" katrai VO kartei/Excel reģistra rindai.
 
 ### Favicon
 

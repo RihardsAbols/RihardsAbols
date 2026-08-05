@@ -90,6 +90,28 @@ const migrations: Record<number, Migration> = {
       ? data.variationOrders.map((vo) => migrateVariationOrderV8ToV9(vo as Record<string, unknown>))
       : data.variationOrders,
   }),
+  // v9 VO had no statusHistory (pilna statusa maiņu vēsture, skat.
+  // models/variationOrder.ts) - `statusDate` vien nepietiek, jo tas tiek
+  // PĀRRAKSTĪTS katrā maiņā, tāpēc apstiprināšanas datums ir jau PAZUDIS no
+  // datiem VO, kas tika apstiprināta un VĒLĀK anulēta pirms šīs migrācijas -
+  // to nevar atgūt, tikai novērst turpmāku zudumu. Rekonstruē LABĀKO
+  // IESPĒJAMO vēsturi no esošajiem laukiem: vienmēr "proposed" pie vo.date,
+  // un, ja statusDate iestatīts, papildus pašreizējais status pie tā (pareizi
+  // VO, kas nekad netika anulēta pēc apstiprināšanas/noraidīšanas).
+  9: (data) => ({
+    ...data,
+    variationOrders: Array.isArray(data.variationOrders)
+      ? data.variationOrders.map((vo) => migrateVariationOrderV9ToV10(vo as Record<string, unknown>))
+      : data.variationOrders,
+  }),
+  // v10 had no baselineApprovedBy (kas apstiprināja bāzes iesaldēšanu) -
+  // default to null. Vēsturiskiem projektiem šī informācija nekad netika
+  // ievadīta, tāpēc to nevar atgūt - `null` audita žurnālā/UI/Excel rāda
+  // kā "-", skat. CLAUDE.md "Bāzes apstiprinātājs (Sesija 29)".
+  10: (data) => ({
+    ...data,
+    baselineApprovedBy: typeof data.baselineApprovedBy === "string" ? data.baselineApprovedBy : null,
+  }),
 };
 
 function migrateVariationOrderV6ToV7(vo: Record<string, unknown>): Record<string, unknown> {
@@ -124,6 +146,17 @@ function migrateVariationOrderV8ToV9(vo: Record<string, unknown>): Record<string
     ...vo,
     reserveDrawdown: typeof vo.reserveDrawdown === "number" ? vo.reserveDrawdown : 0,
   };
+}
+
+function migrateVariationOrderV9ToV10(vo: Record<string, unknown>): Record<string, unknown> {
+  if (Array.isArray(vo.statusHistory)) {
+    return vo;
+  }
+  const history: Array<{ status: unknown; date: unknown }> = [{ status: "proposed", date: vo.date }];
+  if (typeof vo.statusDate === "string") {
+    history.push({ status: vo.status, date: vo.statusDate });
+  }
+  return { ...vo, statusHistory: history };
 }
 
 function migrateCompanyDetails(value: unknown): { name: string; regNr: string; address: string } {

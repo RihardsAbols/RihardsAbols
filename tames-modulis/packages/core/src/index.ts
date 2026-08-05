@@ -8,7 +8,7 @@ export {
   DEFAULT_PROFIT_RATE,
   DEFAULT_DISCOUNT_RATE,
 } from "./models/boq.js";
-export type { VariationOrder, VariationOrderChange, VariationOrderStatus } from "./models/variationOrder.js";
+export type { VariationOrder, VariationOrderChange, VariationOrderStatus, VariationOrderStatusEvent } from "./models/variationOrder.js";
 export type { BoqItemDiffRow, CreateVariationOrderInput, ItemVoImpact, ItemDisplayInfo, ReserveEntry, ReserveBalance } from "./variationOrders/deriveCurrentState.js";
 export {
   deriveCurrentSections,
@@ -45,6 +45,8 @@ export {
   deleteProject,
   ProjectNotFoundError,
 } from "./projects/ProjectService.js";
+export type { AuditEvent, AuditEventType } from "./audit/auditLog.js";
+export { computeAuditLog } from "./audit/auditLog.js";
 export type { BoqItemCosts, BoqSectionSummary, BoqSummary } from "./calculations/boq.js";
 export {
   round2,
